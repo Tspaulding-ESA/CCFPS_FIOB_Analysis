@@ -17,7 +17,7 @@ library(gam)
 library(file.path)
 
 
-# Functions ---------------------------------------------------------------
+# Functions ##############################################################
 #function to turn a date into a week of the study
 date_to_studyweek <- function (date) {
   studyweek <- floor(as.numeric(date - as_date("2013-05-03"))/7)+1
@@ -46,10 +46,10 @@ split_interval_weeks <- function(start, end, unit) {
   tibble(.start = head(timeline, -1), .end = tail(timeline, -1))
 }
 
-# Format Data ----------------------------------------------------------
+# Format Data #############################################################
 # This script picks up wfile.path the BKM_QAQC script ends
 
-## Read in the detections and hydrophone data -----------------------------
+## Read in the detections and hydrophone data =============================
 all_bkm <- readRDS("all_bkm.rds")
 
 hydrophones <- read.csv("TR1_Connectivity/HydrophoneSites.csv", header = T, 
@@ -61,7 +61,7 @@ hydrophones$SiteCode <- factor(hydrophones$SiteCode,
 Hydrophones <- hydrophones[,c(1,5)]
 Hydrophones <- Hydrophones[!is.na(Hydrophones$SiteCode),]
 
-## Format the data and turn into a weekly detection history ---------------
+## Format the data and turn into a weekly detection history ===============
 # Extract the start of each bookmark into a single table
 all_bkm_week <- all_bkm %>%
   mutate(Week = date_to_studyweek(as_date(CorrLocal_DateTime)),
@@ -78,7 +78,7 @@ DateHydTagMatrix <- DateHydTagMatrix %>%
   select(Weeks, SiteCode, HydrophoneID, TagID)
 names(DateHydTagMatrix) <- c("Week","SiteCode","HyfonNo", "TagID")
 
-### Hydrophone Checks ----------------------------------------------------- 
+### Hydrophone Checks -----------------------------------------------------
 #Determine whether the hydrophone heard its assigned beacon tag that week
 beacons <- read.csv("TR1_Connectivity/BeaconTags.csv", header = T, stringsAsFactors = T)
 beacons$species <- "Beacon"
@@ -101,7 +101,7 @@ HydBeaconBin <- HydBeaconMatrix %>%
   distinct(Week,SiteCode,BeaconDetected) %>%
   arrange(SiteCode, Week)
 
-### Build the weekly detection histories ---------------------------------
+### Build the weekly detection histories ----------------------------------
 # Create a week-binned tag record
 all_bkm_week <- all_bkm_week %>%
   mutate(SiteCode = hydrophones[match(HyfonNo, hydrophones$HydrophoneID),1])
@@ -178,7 +178,7 @@ TagBKM_Bin <- TagBKM_Bin %>%
 rm(list = c("release_dat","release_dates","HydBeaconMatrix",
             "HydBeaconBin", "DateHydTagMatrix"))
 
-### Summarise Tag Release Data
+### Summarise Tag Release Data --------------------------------------------
 release_summary <- release %>%
   group_by(Species, Week) %>%
   tally()
@@ -210,8 +210,8 @@ ggplot()+
 
 
 
-# Begin Analysis -----------------------------------------------------------
-## Shed Tag Review -------------------------------------------------------
+# Begin Analysis ##########################################################
+## Shed Tag Review ========================================================
 HydVisit <- TagBKM_Bin %>%
   mutate(Location = case_when(
     SiteCode %in% c("IC1","IC2","IC3") ~ "Intake", 
@@ -291,7 +291,7 @@ ShedTags <- Site_CRE %>%
   group_by(TagID)%>%
   summarise(ShedWeek = min(StartWeek)+1)
 
-## Estimating TagLife -----------------------------------------------------
+## Estimating TagLife =====================================================
 # Tag life based on maximum Tag Life for specific tag type
 TagTypes <- read.csv("TR1_Connectivity/TagTypes.csv", header = T, 
                      stringsAsFactors = F)
@@ -331,7 +331,7 @@ ggplot(TagBKM_Bin[TagBKM_Bin$TagID %in% c(5956.24) &
   scale_y_discrete()+
   theme(panel.spacing = unit(0, "lines"))
 
-## Redo weekly detection histories including tag failures
+## Redo weekly detection histories including tag failures =================
 # Determine how many and which sites a tag visited on a single week
 # Redo Hydvisit to include Tag Failure
 HydVisit <- TagBKM_Bin %>%
@@ -382,7 +382,7 @@ no_detect_tags <- TotalSiteVisitSummary %>%
   filter(numSites == 0) %>%
   pull(TagID)
 
-#### Code Location as either Inside, Outside, or Transiting----------------
+### Code Location as either Inside, Outside, or Transiting ----------------
 
 WeeklySiteVisit$Location <- lapply(WeeklySiteVisit$SiteVisits, 
                              function(x) case_when(
@@ -447,7 +447,7 @@ WeeklySiteVisit <- WeeklySiteVisit %>%
   mutate(ShedWeek = ifelse(is.na(ShedWeek),257,ShedWeek)) %>% 
   filter(Week < ShedWeek)
 
-## Group Residency periods into Continuous Events ------------------------
+## Group Residency periods into Continuous Events =========================
 CCF_Residency_CRE <- WeeklySiteVisit %>% 
   filter(!(TagID %in% no_detect_tags)) %>% #filter out undetected tags
   ungroup() %>%
@@ -469,7 +469,7 @@ CCF_Residency_CRE <- WeeklySiteVisit %>%
   ungroup() %>%
   arrange(TagID, StartWeek)
 
-#### Extend the Residency periods for fish with gaps ---------------------
+### Extend the Residency periods for fish with gaps -----------------------
 # Gap is assumed to spent at the same location as the next site following
 # Movement
 CCF_Residency_CRE <- CCF_Residency_CRE %>%
@@ -497,8 +497,8 @@ CCF_Residency_CRE <- CCF_Residency_CRE %>%
       TRUE ~ EndWeek)
     )
 
-# Estimate Age based on length -------------------------------------------
-# Retrieve Length at capture from release data
+# Estimate Age based on length ############################################
+## Retrieve Length at capture from release data ===========================
 CCF_Residency_CRE <- CCF_Residency_CRE %>%
   ungroup() %>%
   left_join(.,release[,c(1,7)], by = "TagID") %>%
@@ -508,7 +508,7 @@ CCF_Residency_CRE <- CCF_Residency_CRE %>%
 # fishR Vignette (D.Ogle 2013), based on methods from 
 # Iserman and Knight (2015)
 
-#### Striped Bass Aging ####
+## Striped Bass Aging =====================================================
 # Building the age-length key table ####
 set.seed(42069)
 
@@ -556,7 +556,7 @@ stb.raw <- with(stb.age1, table(LCat,Age))
 stb.key <- prop.table(stb.raw, margin = 1)
 round(stb.key,2)
 
-# Assign Ages to individuals at capture using age-length key
+### Assign Ages to individuals at capture using age-length key ------------
 stb.len <- CCF_Residency_CRE %>%
   filter(Species == "Striped Bass") %>%
   distinct(TagID, Length_cm) %>%
@@ -572,7 +572,7 @@ stb.key.expanded <- stb.key.tib %>%
   mutate(n = n*5) %>%
   map_df(., rep, .$n)
 
-#### Largemouth Bass Aging
+## Largemouth Bass Aging ==================================================
 lmb.age <- AgeData[AgeData$Species == "Largemouth Bass",] %>%
   select(Length_cm, Age) %>%
   arrange(Age)
@@ -614,7 +614,7 @@ lmb.raw <- with(lmb.age1, table(LCat,Age))
 lmb.key <- prop.table(lmb.raw, margin = 1)
 round(lmb.key,2)
 
-# Assign Ages to individuals at capture using age-length key
+## Assign Ages to individuals at capture using age-length key =============
 lmb.len <- CCF_Residency_CRE %>%
   filter(Species == "Largemouth Bass") %>%
   distinct(TagID, Length_cm) %>%
@@ -645,6 +645,7 @@ CCF_Residency_CRE <- CCF_Residency_CRE %>%
 # Cross each tag with each week (universal dataframe)
 tag_x_weeks <- crossing(Tags,Week = Weeks)
 
+## Determine the Age of an Individual at Week n and Weeks at Age a.
 weekly_tag_age <- CCF_Residency_CRE %>%
   group_by(TagID) %>%
   summarise(CaptureWeek = min(StartWeek),
@@ -676,11 +677,11 @@ CCF_Residency_CRE <- CCF_Residency_CRE %>%
          )) %>%
   arrange(TagID, StartWeek)
 
-# Examine Residency --------------------------------------------------------
+# Examine Residency ########################################################
 # Residency defined as being consecutively detected
 # inside or outside of CCF without detection at the opposite location
 
-## Determine the Duration of Continuous Events -----------------------------
+## Determine the Duration of Continuous Events =============================
 CCF_Residency_CRE <- CCF_Residency_CRE %>% 
   mutate(Duration_Weeks = as.integer(EndWeek - StartWeek + 1)) %>%
   filter(Species != "Beacon" | Location != "Tag Failure") %>%
@@ -720,7 +721,7 @@ CRE_Age_summary <- CCF_Residency_CRE %>%
   add_tally() %>%
   distinct(Species, TagID, AgeBin,Location,MeanResidency_Weeks,TotalResidency_Weeks)
 
-# Examine Movement ---------------------------------------------------------
+# Examine Movement ########################################################
 CRE_Movement <- CCF_Residency_CRE %>%
   ungroup() %>%
   arrange(TagID,StartWeek)%>%
@@ -787,7 +788,7 @@ CRE_Movement$move_direction <- ifelse(
   "NOT TRANSIT", 
   CRE_Movement$move_direction)
 
-# Develop a table of Migrants ---------------------------------------------
+# Develop a table of Migrants #############################################
 #Exits and Full Transits (at least 1 exit)
 emigrants <- CRE_Movement %>%
   filter(Species %in% c("Striped Bass","Largemouth Bass")) %>%
@@ -821,8 +822,8 @@ ggplot(migrants %>% filter(Species == "Striped Bass")) +
   facet_grid(Species ~.)+
   theme_classic()
 
-# Splitting Each CRE by Time Periods --------------------------------------
-# Split all CREs by different measurements of time for different temporal resolution data
+# Splitting Each CRE by Time Periods ######################################
+# Split all CREs by weeks to increase resolution
 tbl_split_weeks <- CRE_Movement %>%
   mutate(StartDate = studyweek_startdate(StartWeek), 
          EndDate = studyweek_enddate(EndWeek)) %>%
@@ -839,18 +840,16 @@ tbl_split_weeks <- CRE_Movement %>%
                                as.Date(.end)), 
                         origin = origin))
 
-# CONNECTIVITY METRICS FOR CCFPS ANALYSIS ---------------------------------
+# CONNECTIVITY METRICS ###################################################
+# Metrics created:
+#  >Transit Frequency
+#  >Weeks until first transit
 
-#### Metrics created ####
-# Transit Frequency
-# Weeks until first transit
-
-#### Transit Frequency ####
+## Transit Frequency =====================================================
 # Transit frequency is the number of transits a fish makes
 # Divided by their total time at large
 
-# Individual Transit Frequency ####
-
+### Individual Transit Frequency -----------------------------------------
 # Count the total number of resolved transits a fish makes
 transits <- CRE_Movement %>%
   filter(Species != "Catfish") %>%
@@ -927,7 +926,7 @@ freq_boxplot_migrants
 
 freq_boxplot_age
 
-#### Emmigrant Analysis ####
+## Emmigrant Analysis =====================================================
 Exits <- CRE_Movement %>%
   group_by(Species,TagID, move_direction) %>%
   filter(move_direction %in% c("EXIT","FULL TRANSIT")) %>%
@@ -995,13 +994,13 @@ emmigration_table <- NewTags %>%
          month = month(studyweek_startdate(Week)),
          wks_btwn = Week-lag(Week))
 
-# Time to First Exit 
+### Time to First Exit -----------------------------------------------------
 first_exit <- emmigration_table %>%
   filter(Movement %in% c("NewTag","Exit") & ID == 1) %>%
   filter(!is.na(wks_btwn)) %>%
   select(Species, TagID, ttFirstExit = wks_btwn)
 
-# Average Time between movements?
+### Average Time between movements? ----------------------------------------
 time_btwn_movements <- emmigration_table %>%
   left_join(weekly_tag_age) %>%
   filter(Movement != "New Tag") %>%
@@ -1011,18 +1010,16 @@ time_btwn_movements <- emmigration_table %>%
   summarise(mean_time_btwn_mvmts = mean(wks_btwn),
             max_time_btwn_mvmts = max(wks_btwn))
 
-######################################
-#### Weeks Since Release Survival ####
-######################################
+### Weeks from release to first exit ---------------------------------------
 
-# Find all fish that ever changed location at least once and create a new column "emmigrant" and set the value = 1
+#Find all fish that ever changed location at least once and create a new column "emmigrant" and set the value = 1
 CRE_emmigrants <- CCF_Residency_CRE %>%
   group_by(TagID)%>%
   filter(LocationChange > 0) %>%
   distinct(TagID)%>%
   mutate(emmigrant = 1)
 
-# For all fish find, their first CRE (Location 0) and pull the Tag ID, Species, and how long the CRE lasts
+# For all fish, find their first CRE (Location 0) and pull the Tag ID, Species, and how long the CRE lasts
 cre_surv <- CCF_Residency_CRE  %>%
   group_by(TagID)%>%
   filter(LocationChange == 0) %>%
@@ -1036,18 +1033,21 @@ cre_surv$emmigrant[is.na(cre_surv$emmigrant)]<-0
 #Create a new column time which transforms duration_sec to days
 cre_surv$time <- as.numeric(cre_surv$Duration_Weeks)
 
-# Fit a Kaplan Meier Survivor Model to the data, 
+#### Fit a Kaplan Meier Survivor Model to the data -------------------------
+
 # the column emmigrant is being used to censor data
 # if a fish was not "witnessed" emigrating it is censored
 km <- with(cre_surv[cre_surv$Species != "Beacon",], survival::Surv(time,emmigrant))
 head(km,1000)
-#The first Survival curve is for all fish (censored)
+
+
+## The First Survival Curve is for All fish (censored)
 km_fit <- survfit(Surv(time, emmigrant)~1, data = cre_surv[cre_surv$Species != "Beacon",])
 summary(km_fit, times = c(seq(1, 1550, 100)))
 
 autoplot(km_fit) 
 
-#Next try to separate by Species
+## Next try to separate by Species
 km_fit_sp <- survival::survfit(survival::Surv(time, emmigrant)~Species, data = cre_surv[cre_surv$Species != "Beacon",])
 autoplot(km_fit_sp)
 
@@ -1055,7 +1055,7 @@ pdf("TimeToEmmigration_All.pdf", width = 10, height =7)
 autoplot(km_fit_sp)
 dev.off()
 
-# Fit our Age Bins for Striped Bass
+## Fit our Age Bins for Striped Bass
 cre_surv_age <- cre_surv %>%
   filter(Species == "Striped Bass")
 
@@ -1069,12 +1069,9 @@ autoplot(km_fit_age)+theme_classic()+
        x = "Time (weeks)")
 dev.off()
 
-##############################################
-#####  Prepare data for cluster analysis #####
-##############################################
+# Prepare the data for Cluster analysis ###################################
 
-#### Total Receivers detected On / TAL ####
-
+## Total Receivers detected On / Time at Large ============================
 DetectedRcvrs <- TotalSiteVisitSummary %>%
   select(Species, TagID, InsideSiteVisits = inside_sites, 
          OutsideSiteVisits = outside_sites, numSites, TAL) %>%
@@ -1082,7 +1079,7 @@ DetectedRcvrs <- TotalSiteVisitSummary %>%
          lifetime_outside = OutsideSiteVisits/TAL,
          lifetime_all = numSites/TAL)
 
-#### Receivers/Wk detected On ####
+## Receivers/Wk detected On ================================================
 WkDetectedRcvrs <- WeeklySiteVisit %>%
   filter(!(grepl("Tag Failure", SiteVisits))) %>%
   ungroup() %>%
@@ -1091,7 +1088,7 @@ WkDetectedRcvrs <- WeeklySiteVisit %>%
   summarise(mean_WkRcvrs = mean(NumSites, na.rm = TRUE),
             max_WkRcvrs = max(NumSites, na.rm = TRUE))
 
-#### Estimated Capture Age
+## Estimated Capture Age ===================================================
 CaptureAge <- AssignedAge %>%
   select(TagID, EstCaptureAge) %>%
   mutate(CaptureAgeBin = case_when(
@@ -1101,7 +1098,7 @@ CaptureAge <- AssignedAge %>%
   )) %>%
   select(TagID, CaptureAgeBin)
 
-#### Weeks Undetected ####
+## Weeks Undetected ========================================================
 Wks_Undetected <- TagBKM_Bin %>%
   filter(SiteCode != "Tag Failure") %>%
   ungroup() %>%
@@ -1114,11 +1111,11 @@ Wks_Undetected <- TagBKM_Bin %>%
   summarise(max_time_btwn_detects = max(time_btwn, na.rm = TRUE),
             avg_time_btwn_detects = mean(time_btwn,na.rm = TRUE))
 
-#### Weeks btwn Movements ####
+## Weeks btwn Movements ====================================================
 time_btwn_movements
 
-#### Quantiles of Distance per Week ####
-#### Assign minimum distance travelled in one week ####
+## Quantiles of Distance per Week ==========================================
+### Assign minimum distance travelled in one week --------------------------
 
 #Read in Linear Distance
 distances <- read.csv("TR1_Connectivity/HydDistance.csv")
@@ -1138,6 +1135,7 @@ TagBKM_Bin %>%
   summarise(weekly_max_distance = max(Distance),
             weekly_mean_distance = mean(Distance)) -> WeeklyDistance
 
+### Summarize Distance -----------------------------------------------------
 WeeklyDistance %>%
   ungroup() %>%
   group_by(Species, TagID, AgeBin) %>%
@@ -1147,10 +1145,10 @@ WeeklyDistance %>%
             q75_distance = quantile(weekly_max_distance, 0.75),
             q99_distance = quantile(weekly_max_distance, 0.99)) -> Distances
 
-#Emigration Status
+## Emigration Status =======================================================
 emmigrant_tags
 
-#Estimated Age at First Exit
+## Estimated Age at First Exit =============================================
 FirstExitAge <- AssignedAge %>%
   left_join(first_exit) %>%
   filter(!is.na(ttFirstExit)) %>%
@@ -1162,7 +1160,7 @@ FirstExitAge <- AssignedAge %>%
   )) %>%
   select(TagID, FirstExitAgeBin)
 
-#Avg Week of Year of Exit
+## Avg Week of Year of Exit ================================================
 avg_exit_wk <- emmigration_table %>%
   filter(Movement == "Exit") %>%
   select(TagID, Week, jdate, month) %>%
@@ -1170,7 +1168,7 @@ avg_exit_wk <- emmigration_table %>%
   group_by(TagID) %>%
   summarise(mean_exit_woy = mean(woy))
 
-#Avg Week of Year of Entry
+## Avg Week of Year of Entry ===============================================
 avg_entry_wk <- emmigration_table %>%
   filter(Movement == "Entry") %>%
   select(TagID, Week, jdate, month) %>%
@@ -1178,7 +1176,7 @@ avg_entry_wk <- emmigration_table %>%
   group_by(TagID) %>%
   summarise(mean_entry_woy = mean(woy))
   
-#Number of Exits and Entries
+## Number of Exits and Entries =============================================
 TotalMovement <- emmigration_table %>%
   left_join(weekly_tag_age, by = c("TagID","Week")) %>%
   filter(Movement %in% c("Exit", "Entry")) %>%
@@ -1199,7 +1197,7 @@ MovementFrequency <- TotalMovement %>%
          All_Moves_freq = All_Moves/time_at_age) %>%
   select(TagID, AgeBin, Exit_freq:All_Moves_freq)
 
-#Average Residence Time
+## Average Residence Time ==================================================
 avg_residence <- CRE_Age_summary %>%
   filter(Location %in% c("INSIDE","OUTSIDE")) %>%
   select(TagID, Location, MeanResidency_Weeks) %>%
@@ -1216,8 +1214,7 @@ total_residence <- CRE_Age_summary %>%
               values_from = "TotalResidency_Weeks",
               values_fill = 0)
 
-#### Join the Data ####
-
+## Join the Data
 dat <- DetectedRcvrs %>%
   left_join(WkDetectedRcvrs) %>%
   left_join(CaptureAge,) %>%
@@ -1281,15 +1278,18 @@ dat <- DetectedRcvrs %>%
   select(-c(TagID)) %>%
   filter(Species == 1)
 
+## Conduct Cluster Analysis ===============================================
 #Following http://stratigrafia.org/8370/lecturenotes/clusterAnalysis.html
+
 library(vegan)
 set.seed(123)
 
+### Formatting ------------------------------------------------------------
 datT1 <- decostand(dat, method = "total")
 datT2 <- decostand(datT1, method = "max")
 datBray <- vegdist(datT2)
 
-# Create the Dendogram
+### Create the Dendogram --------------------------------------------------
 bray_agnes <- cluster::agnes(datBray, method = "ward")
 
 plot(bray_agnes, which.plots = 2, main="Movement Groups", cex=0.1)
@@ -1297,7 +1297,7 @@ abline(h=4, col="red", lwd = 2)
 abline(h=5, col="yellow2", lwd = 2)
 abline(h=8, col="green", lwd = 2)
 
-# Choosing the right clustering algorithm
+### Choosing the right clustering algorithm --------------------------------
 # https://www.datanovia.com/en/lessons/choosing-the-best-clustering-algorithms/
 
 # Compute clValid
@@ -1381,7 +1381,7 @@ gof_summary <- gof_pvt %>%
 gof_summary
 # kmeans_2, pam_5, kmeans_3,
 
-# Review clusters
+### Review clusters --------------------------------------------------------
 # kmeans with k set to 2 from above
 kmeans <- factoextra::eclust(datT2, "kmeans", k = 2, 
                           nboot = 5000,
@@ -1389,7 +1389,7 @@ kmeans <- factoextra::eclust(datT2, "kmeans", k = 2,
                           hc_method = "ward.D2", 
                           graph = FALSE)
 
-# Visualize cluster
+# Visualize cluster 
 factoextra::fviz_cluster(kmeans, labelsize = 0,
                       as.ggplot = TRUE)+
   theme_classic()+
@@ -1515,6 +1515,7 @@ factoextra::fviz_cluster(hkmeans_5,
   theme_classic()+
   labs(title = "Hierarchical K-means, k = 5")
 
+## Select Appropriate Cluster ================================================
 # 3 or 5 clusters has relatively good support (long "legs", similarity is
 # determined by leg height, short legs = more similar, similar height bifurcation
 # mean similar points of separation)
@@ -1539,7 +1540,7 @@ clustered_dat <- dat %>%
   rownames_to_column("TagID") %>%
   left_join(cluster_assign)
 
-# Examine the variables by cluster
+### Examine the variables by cluster --------------------------------------
 species_plot <- ggplot(clustered_dat %>%
                          group_by(Species) %>%
                          mutate(total = n()) %>%
