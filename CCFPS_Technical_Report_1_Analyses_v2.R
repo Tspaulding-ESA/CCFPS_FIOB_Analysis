@@ -1,8 +1,4 @@
-#######################################################################
-######                                                          #######
 ######             CCFPS TECHNICAL REPORT 1 ANALYSIS            #######
-######                                                          #######
-#######################################################################
 library(FSA)
 library(nlstools)
 library(lubridate)
@@ -20,8 +16,8 @@ library(ggfortify)
 library(gam)
 library(here)
 
-# functions to define Study Week and convert Study Week to Start and End dates
 
+# Functions ---------------------------------------------------------------
 date_to_studyweek <- function (date) {
   studyweek <- floor(as.numeric(date - as_date("2013-05-03"))/7)+1
   return(studyweek)
@@ -36,7 +32,10 @@ studyweek_enddate <- function (Week) {
 }
 
 
+# Format Data ----------------------------------------------------------
 # This script picks up where the BKM_QAQC script ends
+
+## Read in the detections and hydrophone data -----------------------------
 all_bkm <- readRDS("all_bkm.rds")
 
 hydrophones <- read.csv("TR1_Connectivity/HydrophoneSites.csv", header = T, 
@@ -48,6 +47,7 @@ hydrophones$SiteCode <- factor(hydrophones$SiteCode,
 Hydrophones <- hydrophones[,c(1,5)]
 Hydrophones <- Hydrophones[!is.na(Hydrophones$SiteCode),]
 
+#### Format the data and turn into a weekly detection history ---------------
 # Extract the start of each bookmark into a single table
 all_bkm_week <- all_bkm %>%
   mutate(Week = date_to_studyweek(as_date(CorrLocal_DateTime)),
@@ -64,10 +64,7 @@ DateHydTagMatrix <- DateHydTagMatrix %>%
   select(Weeks, SiteCode, HydrophoneID, TagID)
 names(DateHydTagMatrix) <- c("Week","SiteCode","HyfonNo", "TagID")
 
-
-# Clean Up
-rm(list = c("Weeks","Tags"))
-
+####### Hydrophone Checks ----------------------------------------------------- 
 #Determine whether the hydrophone heard its assigned beacon tag that week
 beacons <- read.csv("TR1_Connectivity/BeaconTags.csv", header = T, stringsAsFactors = T)
 beacons$species <- "Beacon"
@@ -90,6 +87,7 @@ HydBeaconBin <- HydBeaconMatrix %>%
   distinct(Week,SiteCode,BeaconDetected) %>%
   arrange(SiteCode, Week)
 
+####### Build the weekly detection histories ---------------------------------
 # Create a week-binned tag record
 all_bkm_week <- all_bkm_week %>%
   mutate(SiteCode = hydrophones[match(HyfonNo, hydrophones$HydrophoneID),1])
@@ -131,11 +129,10 @@ TagBKM_Bin <- TagBKM_Bin %>%
 TagBKM_Bin$BeaconDetected[is.na(TagBKM_Bin$BeaconDetected)] <- FALSE
 TagBKM_Bin$AnyDetected[is.na(TagBKM_Bin$AnyDetected)] <- FALSE
 
-##################################
-#### BEGIN ANALYSIS ##############
-##################################
 
-# Add in the Release Data from the CSV
+# Begin Analysis ----------------------------------------------------------
+
+####### Add in the Release Data from the CSV
 release_dates <- read.csv("TR1_Connectivity/Release_Dates.csv", 
                           stringsAsFactors = F, header = T)
 release_dat <- read.csv("TR1_Connectivity/ReleaseData.csv", 
@@ -170,7 +167,7 @@ TagBKM_Bin <- TagBKM_Bin %>%
 rm(list = c("release_dat","release_dates","HydBeaconMatrix",
             "HydBeaconBin", "DateHydTagMatrix"))
 
-#Summarise Tag Release Data
+####### Summarise Tag Release Data
 release_summary <- release %>%
   group_by(Species, Week) %>%
   tally()
@@ -185,7 +182,7 @@ releases <- ggplot()+
   )+
   labs(x = "Date", y = "Total Number of Released Individuals")
 
-pdf(file = here("CCFPS_V2","Figures","ReleaseSummary.pdf"), width = 15, height = 5)
+pdf(file = here("Figures","ReleaseSummary.pdf"), width = 15, height = 5)
 releases
 dev.off()
 
@@ -200,7 +197,7 @@ ggplot()+
   theme(panel.spacing = unit(0, "lines"))+
   facet_grid(TagID ~.)
 
-#### Shed Tag Review ####
+#### Shed Tag Review -------------------------------------------------------
 HydVisit <- TagBKM_Bin %>%
   mutate(Location = case_when(
     SiteCode %in% c("IC1","IC2","IC3") ~ "Intake", 
@@ -268,7 +265,7 @@ ShedTags_plot <- ggplot()+
   ggtitle("Analysis of Uninterrupted Detection Periods at a Single Receiver")+
   theme_classic()
   
-pdf(file = here("CCFPS_V2","Figures","ShedTagReview.pdf"),
+pdf(file = here("Figures","ShedTagReview.pdf"),
     width = 4, height = 4.5)
 ShedTags_plot
 dev.off()
@@ -280,7 +277,7 @@ ShedTags <- Site_CRE %>%
   group_by(TagID)%>%
   summarise(ShedWeek = min(StartWeek)+1)
 
-#### Estimating TagLife ####
+#### Estimating TagLife -----------------------------------------------------
 # Tag life based on maximum Tag Life for specific tag type
 TagTypes <- read.csv("TR1_Connectivity/TagTypes.csv", header = T, 
                      stringsAsFactors = F)
@@ -320,6 +317,7 @@ ggplot(TagBKM_Bin[TagBKM_Bin$TagID %in% c(5956.24) &
   scale_y_discrete()+
   theme(panel.spacing = unit(0, "lines"))
 
+## Redo weekly detection histories including tag failures
 # Determine how many and which sites a tag visited on a single week
 # Redo Hydvisit to include Tag Failure
 HydVisit <- TagBKM_Bin %>%
@@ -370,7 +368,7 @@ no_detect_tags <- TotalSiteVisitSummary %>%
   filter(numSites == 0) %>%
   pull(TagID)
 
-# Code Location as either Inside, Outside, or Transiting
+#### Code Location as either Inside, Outside, or Transiting----------------
 
 WeeklySiteVisit$Location <- lapply(WeeklySiteVisit$SiteVisits, 
                              function(x) case_when(
@@ -435,7 +433,7 @@ WeeklySiteVisit <- WeeklySiteVisit %>%
   mutate(ShedWeek = ifelse(is.na(ShedWeek),257,ShedWeek)) %>% 
   filter(Week < ShedWeek)
 
-#### Group Residency periods into Continuous Events ####
+## Group Residency periods into Continuous Events ------------------------
 CCF_Residency_CRE <- WeeklySiteVisit %>% 
   filter(!(TagID %in% no_detect_tags)) %>% #filter out undetected tags
   ungroup() %>%
@@ -457,7 +455,7 @@ CCF_Residency_CRE <- WeeklySiteVisit %>%
   ungroup() %>%
   arrange(TagID, StartWeek)
 
-#### Extend the Residency periods for fish with gaps
+#### Extend the Residency periods for fish with gaps ---------------------
 # Gap is assumed to spent at the same location as the next site following
 # Movement
 CCF_Residency_CRE <- CCF_Residency_CRE %>%
@@ -485,7 +483,7 @@ CCF_Residency_CRE <- CCF_Residency_CRE %>%
       TRUE ~ EndWeek)
     )
 
-#### Estimate Age based on length ####
+# Estimate Age based on length -------------------------------------------
 # Retrieve Length at capture from release data
 CCF_Residency_CRE <- CCF_Residency_CRE %>%
   ungroup() %>%
@@ -630,6 +628,7 @@ CCF_Residency_CRE <- CCF_Residency_CRE %>%
   mutate(CaptureWeek = date_to_studyweek(CaptureDate)) %>%
   select(Species, TagID, LocationChange, Location, StartWeek, EndWeek, Length_cm.x, EstCaptureAge, CaptureWeek, EstimatedAge)
 
+# Cross each tag with each week (universal dataframe)
 tag_x_weeks <- crossing(Tags,Week = Weeks)
 
 weekly_tag_age <- CCF_Residency_CRE %>%
@@ -647,7 +646,7 @@ weekly_tag_age <- CCF_Residency_CRE %>%
            between(EstimatedAge,3,5) ~ "3-5",
            EstimatedAge >= 6 ~ "6+"
          )) %>%
-  dplyr::select(TagID,Week,AgeBin) %>%
+  dplyr::select(TagID,Week,AgeBin)
   left_join(
     weekly_tag_age %>%
       ungroup() %>%
