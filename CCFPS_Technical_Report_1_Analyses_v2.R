@@ -14,26 +14,40 @@ library(ggplot2)
 library(survival)
 library(ggfortify)
 library(gam)
-library(here)
+library(file.path)
 
 
 # Functions ---------------------------------------------------------------
+#function to turn a date into a week of the study
 date_to_studyweek <- function (date) {
   studyweek <- floor(as.numeric(date - as_date("2013-05-03"))/7)+1
   return(studyweek)
 }
+
+#function to find the start date of a study week
 studyweek_startdate <- function (Week) {
   startdate <- as_date("2013-05-03")+weeks(Week-1)
   return(startdate)
 }
+
+#Function to find the end date of a study week
 studyweek_enddate <- function (Week) {
   enddate <- as_date("2013-05-09")+weeks(Week-1)
   return(enddate)
 }
 
+# Create helper function to split the interval of the CRE into a given unit size (ie weeks)
+# Remember that the original weekly bin was only for detections, we are now
+# assuming that a fish is remaining in a location and need to code each week
+# it is at-large as such
+split_interval_weeks <- function(start, end, unit) {
+  breaks <- seq(floor_date(start, "day"), ceiling_date(end, "day"), by = unit)
+  timeline <- c(start, breaks[breaks > start & breaks < end], end)
+  tibble(.start = head(timeline, -1), .end = tail(timeline, -1))
+}
 
 # Format Data ----------------------------------------------------------
-# This script picks up where the BKM_QAQC script ends
+# This script picks up wfile.path the BKM_QAQC script ends
 
 ## Read in the detections and hydrophone data -----------------------------
 all_bkm <- readRDS("all_bkm.rds")
@@ -47,7 +61,7 @@ hydrophones$SiteCode <- factor(hydrophones$SiteCode,
 Hydrophones <- hydrophones[,c(1,5)]
 Hydrophones <- Hydrophones[!is.na(Hydrophones$SiteCode),]
 
-#### Format the data and turn into a weekly detection history ---------------
+## Format the data and turn into a weekly detection history ---------------
 # Extract the start of each bookmark into a single table
 all_bkm_week <- all_bkm %>%
   mutate(Week = date_to_studyweek(as_date(CorrLocal_DateTime)),
@@ -64,7 +78,7 @@ DateHydTagMatrix <- DateHydTagMatrix %>%
   select(Weeks, SiteCode, HydrophoneID, TagID)
 names(DateHydTagMatrix) <- c("Week","SiteCode","HyfonNo", "TagID")
 
-####### Hydrophone Checks ----------------------------------------------------- 
+### Hydrophone Checks ----------------------------------------------------- 
 #Determine whether the hydrophone heard its assigned beacon tag that week
 beacons <- read.csv("TR1_Connectivity/BeaconTags.csv", header = T, stringsAsFactors = T)
 beacons$species <- "Beacon"
@@ -87,7 +101,7 @@ HydBeaconBin <- HydBeaconMatrix %>%
   distinct(Week,SiteCode,BeaconDetected) %>%
   arrange(SiteCode, Week)
 
-####### Build the weekly detection histories ---------------------------------
+### Build the weekly detection histories ---------------------------------
 # Create a week-binned tag record
 all_bkm_week <- all_bkm_week %>%
   mutate(SiteCode = hydrophones[match(HyfonNo, hydrophones$HydrophoneID),1])
@@ -129,10 +143,7 @@ TagBKM_Bin <- TagBKM_Bin %>%
 TagBKM_Bin$BeaconDetected[is.na(TagBKM_Bin$BeaconDetected)] <- FALSE
 TagBKM_Bin$AnyDetected[is.na(TagBKM_Bin$AnyDetected)] <- FALSE
 
-
-# Begin Analysis ----------------------------------------------------------
-
-####### Add in the Release Data from the CSV
+### Add in the Release Data from the CSV
 release_dates <- read.csv("TR1_Connectivity/Release_Dates.csv", 
                           stringsAsFactors = F, header = T)
 release_dat <- read.csv("TR1_Connectivity/ReleaseData.csv", 
@@ -148,7 +159,7 @@ TagBKM_Bin <- TagBKM_Bin %>%
   left_join(.,select(release, TagID, Species), by = "TagID")
 TagBKM_Bin <- bind_rows(TagBKM_Bin, 
                         select( release, Species,TagID, SiteCode, last_detect,
-                               Length_cm, WT_lbs, Week))
+                                Length_cm, WT_lbs, Week))
 
 TagBKM_Bin$SiteCode <- ordered(TagBKM_Bin$SiteCode, 
                                levels = c("IC3","IC2","IC1","Release", "RGD1",
@@ -167,7 +178,7 @@ TagBKM_Bin <- TagBKM_Bin %>%
 rm(list = c("release_dat","release_dates","HydBeaconMatrix",
             "HydBeaconBin", "DateHydTagMatrix"))
 
-####### Summarise Tag Release Data
+### Summarise Tag Release Data
 release_summary <- release %>%
   group_by(Species, Week) %>%
   tally()
@@ -182,7 +193,7 @@ releases <- ggplot()+
   )+
   labs(x = "Date", y = "Total Number of Released Individuals")
 
-pdf(file = here("Figures","ReleaseSummary.pdf"), width = 15, height = 5)
+pdf(file = file.path("Figures","ReleaseSummary.pdf"), width = 15, height = 5)
 releases
 dev.off()
 
@@ -197,7 +208,10 @@ ggplot()+
   theme(panel.spacing = unit(0, "lines"))+
   facet_grid(TagID ~.)
 
-#### Shed Tag Review -------------------------------------------------------
+
+
+# Begin Analysis -----------------------------------------------------------
+## Shed Tag Review -------------------------------------------------------
 HydVisit <- TagBKM_Bin %>%
   mutate(Location = case_when(
     SiteCode %in% c("IC1","IC2","IC3") ~ "Intake", 
@@ -265,7 +279,7 @@ ShedTags_plot <- ggplot()+
   ggtitle("Analysis of Uninterrupted Detection Periods at a Single Receiver")+
   theme_classic()
   
-pdf(file = here("Figures","ShedTagReview.pdf"),
+pdf(file = file.path("Figures","ShedTagReview.pdf"),
     width = 4, height = 4.5)
 ShedTags_plot
 dev.off()
@@ -277,7 +291,7 @@ ShedTags <- Site_CRE %>%
   group_by(TagID)%>%
   summarise(ShedWeek = min(StartWeek)+1)
 
-#### Estimating TagLife -----------------------------------------------------
+## Estimating TagLife -----------------------------------------------------
 # Tag life based on maximum Tag Life for specific tag type
 TagTypes <- read.csv("TR1_Connectivity/TagTypes.csv", header = T, 
                      stringsAsFactors = F)
@@ -372,9 +386,9 @@ no_detect_tags <- TotalSiteVisitSummary %>%
 
 WeeklySiteVisit$Location <- lapply(WeeklySiteVisit$SiteVisits, 
                              function(x) case_when(
-                               # Weeks where ALL detections are "Inside"
+                               # Weeks wfile.path ALL detections are "Inside"
                                all(x %in% inside) ~ "INSIDE",
-                               # Weeks where ALL detections are "Outside"
+                               # Weeks wfile.path ALL detections are "Outside"
                                all(x %in% outside) ~ "OUTSIDE",
                                # Weeks with detections at the Intake Canal 
                                # AND beyond the radial gates are "FULL TRANSIT"
@@ -382,7 +396,7 @@ WeeklySiteVisit$Location <- lapply(WeeklySiteVisit$SiteVisits,
                                      any(x %in% c("ORS1", "WC1", "WC2", "WC3", 
                                               "ORN1", "ORN2", "ORS3", "GL1", 
                                               "CVP1", "CLRS")) ~ "FULL TRANSIT",
-                               # Any week where ALL detections are "Tag Failure"
+                               # Any week wfile.path ALL detections are "Tag Failure"
                                all(x == "Tag Failure") ~ "Tag Failure",
                                # Anything else is a partial transit (i.e. may
                                # or may not have actually crossed the gates)
@@ -465,13 +479,13 @@ CCF_Residency_CRE <- CCF_Residency_CRE %>%
   #mutate(gap = ifelse(is.na(gap),0,gap))
   mutate(
     StartWeek = case_when(
-      #If there isn't a transit, just add time to the next location
+      #If tfile.path isn't a transit, just add time to the next location
       !grepl("TRANSIT", Location) &
         is.finite(lag(gap)) & lag(gap) > 0 ~ StartWeek - lag(gap), 
-      #If there is a transit at both locations, do not extend
+      #If tfile.path is a transit at both locations, do not extend
       grepl("TRANSIT", lag(Location)) & 
         grepl("TRANSIT", Location) ~ StartWeek,
-      #If there is a transit at one location, extend the non-transit location
+      #If tfile.path is a transit at one location, extend the non-transit location
       grepl("TRANSIT", lag(Location)) &
         !grepl("TRANSIT",Location) &
         is.finite(lag(gap)) & lag(gap) > 0 ~ StartWeek - lag(gap),
@@ -646,15 +660,12 @@ weekly_tag_age <- CCF_Residency_CRE %>%
            between(EstimatedAge,3,5) ~ "3-5",
            EstimatedAge >= 6 ~ "6+"
          )) %>%
-  dplyr::select(TagID,Week,AgeBin)
-  left_join(
-    weekly_tag_age %>%
-      ungroup() %>%
-      group_by(TagID,AgeBin) %>%
-      summarise(StartWeek = min(Week),
-                EndWeek = max(Week)) %>%
-      mutate(time_at_age = EndWeek - StartWeek) %>%
-      select(TagID, AgeBin, time_at_age))
+  dplyr::select(TagID,Week,AgeBin) %>%
+  group_by(TagID,AgeBin) %>%
+  summarise(StartWeek = min(Week),
+            EndWeek = max(Week)) %>%
+  mutate(time_at_age = EndWeek - StartWeek) %>%
+  select(TagID, AgeBin, time_at_age)
 
 CCF_Residency_CRE <- CCF_Residency_CRE %>%
   mutate(EstimatedAge = ifelse(is.na(EstimatedAge), -1, EstimatedAge),
@@ -665,11 +676,11 @@ CCF_Residency_CRE <- CCF_Residency_CRE %>%
          )) %>%
   arrange(TagID, StartWeek)
 
-#### Examine Residency ####
+# Examine Residency --------------------------------------------------------
 # Residency defined as being consecutively detected
 # inside or outside of CCF without detection at the opposite location
 
-# Determine the Duration of Continuous Events
+## Determine the Duration of Continuous Events -----------------------------
 CCF_Residency_CRE <- CCF_Residency_CRE %>% 
   mutate(Duration_Weeks = as.integer(EndWeek - StartWeek + 1)) %>%
   filter(Species != "Beacon" | Location != "Tag Failure") %>%
@@ -681,7 +692,8 @@ CCF_Residency_CRE <- CCF_Residency_CRE %>%
 cre_plot <- ggplot(CCF_Residency_CRE[CCF_Residency_CRE$EstimatedAge > 0,] %>%
                      filter(Species == "Striped Bass")
                    )+
-  geom_boxplot(aes(x = Location, y = Duration_Weeks, fill = Location, group = Location))+
+  geom_boxplot(aes(x = Location, y = Duration_Weeks,color = Location, group = Location),
+               fill = "grey95")+
   facet_grid(Species~AgeBin)+
   theme_classic()+
   theme(
@@ -690,7 +702,7 @@ cre_plot <- ggplot(CCF_Residency_CRE[CCF_Residency_CRE$EstimatedAge > 0,] %>%
 
 cre_plot
 
-# Create a Summary of Residency
+### Create a Summary of Residency -----------------------------------------
 CRE_summary <- CCF_Residency_CRE %>%
   group_by(Species,TagID,Location) %>%
   mutate(MeanResidency_Weeks = mean(Duration_Weeks),
@@ -708,7 +720,7 @@ CRE_Age_summary <- CCF_Residency_CRE %>%
   add_tally() %>%
   distinct(Species, TagID, AgeBin,Location,MeanResidency_Weeks,TotalResidency_Weeks)
 
-#### Examine Movement ####
+# Examine Movement ---------------------------------------------------------
 CRE_Movement <- CCF_Residency_CRE %>%
   ungroup() %>%
   arrange(TagID,StartWeek)%>%
@@ -723,7 +735,7 @@ CRE_Movement <- CCF_Residency_CRE %>%
     Location %in% c("FULL TRANSIT","PARTIAL TRANSIT") & 
       lag(Location) == "INSIDE" & 
       lead(Location) == "OUTSIDE" ~ "EXIT",
-    # If there is a Full Transit and both before and after are the same,
+    # If tfile.path is a Full Transit and both before and after are the same,
     # then assume a complete entry and exit or exit and entry
     Location %in% c("FULL TRANSIT") & 
       lag(Location) == lead(Location) ~ "FULL TRANSIT",
@@ -731,11 +743,11 @@ CRE_Movement <- CCF_Residency_CRE %>%
     # then do not assume an actual transit, unresolved. 
     Location %in% c("PARTIAL TRANSIT") & 
       lag(Location) == lead(Location) ~ "UNRESOLVED TRANSIT",
-    # If none of the above are true and there is a Full Transit, and the next 
+    # If none of the above are true and tfile.path is a Full Transit, and the next 
     # location is outside, "EXIT"
     Location == "FULL TRANSIT" & 
       lead(Location) == "OUTSIDE" ~ "EXIT",
-    # If none of the above are true and there is a Full Transit, and the next 
+    # If none of the above are true and tfile.path is a Full Transit, and the next 
     # location is inside, "ENTRY"
     Location == "FULL TRANSIT" & 
       lead(Location) == "INSIDE" ~ "ENTRY",
@@ -753,13 +765,13 @@ CRE_Movement <- CCF_Residency_CRE %>%
     TRUE ~ "UNRESOLVED TRANSIT"))
 
 # Edits for special cases
-# Location 0 is "New Tag" if there is not movement
+# Location 0 is "New Tag" if tfile.path is not movement
 CRE_Movement$move_direction <- ifelse(
   CRE_Movement$move_direction == "UNRESOLVED TRANSIT" & 
     CRE_Movement$LocationChange == 0,
   "New Tag", 
   CRE_Movement$move_direction)
-# If there is an NA, or an Unresolved transit and current tag is different from 
+# If tfile.path is an NA, or an Unresolved transit and current tag is different from 
 # the next tag, this is an Unresolved transit movement
 CRE_Movement$move_direction <- ifelse(
   (is.na(CRE_Movement$move_direction)|
@@ -775,7 +787,7 @@ CRE_Movement$move_direction <- ifelse(
   "NOT TRANSIT", 
   CRE_Movement$move_direction)
 
-# Develop a table of emmigrants
+# Develop a table of Migrants ---------------------------------------------
 #Exits and Full Transits (at least 1 exit)
 emigrants <- CRE_Movement %>%
   filter(Species %in% c("Striped Bass","Largemouth Bass")) %>%
@@ -785,39 +797,31 @@ emigrants <- CRE_Movement %>%
   tally() %>%
   rename("Exits" = n)
 #Entries and Full Transits (at least 1 entry)
-emigrants <- CRE_Movement %>%
+immigrants <- CRE_Movement %>%
   filter(Species %in% c("Striped Bass","Largemouth Bass")) %>%
   ungroup() %>%
   filter(move_direction %in% c("ENTRY", "FULL TRANSIT")) %>%
   group_by(TagID, AgeBin) %>%
   tally() %>%
-  rename("Entries" = n) %>%
-  left_join(emigrants,.)
+  rename("Entries" = n)
+
+migrants <-emigrants %>%
+  left_join(immigrants)
 
 #fill 0s 
-emigrants$Exits <- replace_na(emigrants$Exits,0)
-emigrants$Entries <- replace_na(emigrants$Entries,0)
-emigrants <- emigrants %>%
+migrants$Exits <- replace_na(migrants$Exits,0)
+migrants$Entries <- replace_na(migrants$Entries,0)
+migrants <- migrants %>%
   pivot_longer(cols = c(Entries,Exits), names_to = "Movement", values_to = "Count")
 
-ggplot(emigrants %>% filter(Species == "Striped Bass")) +
+ggplot(migrants %>% filter(Species == "Striped Bass")) +
   #geom_jitter(aes(x = AgeBin, y = Count, color = Movement))+
-  geom_boxplot(aes(x = AgeBin, y = Count, fill = Movement, 
+  geom_boxplot(aes(x = AgeBin, y = Count, color = Movement, 
                    group = interaction(AgeBin, Movement)))+
   facet_grid(Species ~.)+
   theme_classic()
 
-##### Splitting Each CRE by Time Periods ######
-# Create helper function to split the interval of the CRE into a given unit size (ie weeks)
-# Remember that the original weekly bin was only for detections, we are now
-# assuming that a fish is remaining in a location and need to code each week
-# it is at-large as such
-split_interval_weeks <- function(start, end, unit) {
-  breaks <- seq(floor_date(start, "day"), ceiling_date(end, "day"), by = unit)
-  timeline <- c(start, breaks[breaks > start & breaks < end], end)
-  tibble(.start = head(timeline, -1), .end = tail(timeline, -1))
-}
-
+# Splitting Each CRE by Time Periods --------------------------------------
 # Split all CREs by different measurements of time for different temporal resolution data
 tbl_split_weeks <- CRE_Movement %>%
   mutate(StartDate = studyweek_startdate(StartWeek), 
@@ -835,10 +839,7 @@ tbl_split_weeks <- CRE_Movement %>%
                                as.Date(.end)), 
                         origin = origin))
 
-###############################################
-### CONNECTIVITY METRICS FOR CCFPS ANALYSIS ###
-###############################################
-
+# CONNECTIVITY METRICS FOR CCFPS ANALYSIS ---------------------------------
 
 #### Metrics created ####
 # Transit Frequency
@@ -908,7 +909,7 @@ freq_boxplot_tot <- ggplot(trans_freq)+
   labs(title = "All Predator Transit Frequencies 2013-2018", y = "Transit Frequency (Transits / Week)")+
   theme_classic()
 
-freq_boxplot_emigrants <- ggplot(data = trans_freq[trans_freq$emmigrant == T,])+
+freq_boxplot_migrants <- ggplot(data = trans_freq[trans_freq$emmigrant == T,])+
   geom_boxplot(aes(AgeBin,y = transit_freq, group = AgeBin))+
   labs(title = "Emigrant Predator Transit Frequencies by Age 2013-2018", y = "Transit Frequency (Transits / Week)")+
   facet_grid(Species~.)+
@@ -922,7 +923,7 @@ freq_boxplot_age <- ggplot(trans_freq %>% filter(Species == "Striped Bass"))+
 
 freq_boxplot_tot
 
-freq_boxplot_emigrants
+freq_boxplot_migrants
 
 freq_boxplot_age
 
@@ -1061,7 +1062,7 @@ cre_surv_age <- cre_surv %>%
 km_fit_age <- survival::survfit(survival::Surv(time, emmigrant)~AgeBin, data = cre_surv_age)
 autoplot(km_fit_age)+theme_classic()
 
-pdf(here("CCFPS_V2","Figures","TimeToEmmigration_StripedBass_x_Age.pdf"), 
+pdf(file.path("CCFPS_V2","Figures","TimeToEmmigration_StripedBass_x_Age.pdf"), 
     width = 12, height =5)
 autoplot(km_fit_age)+theme_classic()+
   labs(title = "Time to First Exit", y = "Percent of Population Non-Emmigrated",
@@ -1874,7 +1875,7 @@ for(i in unique(clustered_dat$TagID)){
       theme(panel.spacing = unit(0, "lines"),
             axis.text.x = element_text(angle = -45, hjust = 0))+
       facet_grid(TagID ~.)
-    ggsave(here("CCFPS_V2","Figures","DetectionPlots",paste(tmp$TagID[1],tmp$cluster[1],"ex.pdf",sep = "-")),
+    ggsave(file.path("CCFPS_V2","Figures","DetectionPlots",paste(tmp$TagID[1],tmp$cluster[1],"ex.pdf",sep = "-")),
                 device = "pdf", width = 5, height = 2.5)
   } else {
     print("Tag not in cluster")
