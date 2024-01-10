@@ -14,7 +14,6 @@ library(ggplot2)
 library(survival)
 library(ggfortify)
 library(gam)
-library(file.path)
 
 
 # Functions ##############################################################
@@ -661,12 +660,15 @@ weekly_tag_age <- CCF_Residency_CRE %>%
            between(EstimatedAge,3,5) ~ "3-5",
            EstimatedAge >= 6 ~ "6+"
          )) %>%
-  dplyr::select(TagID,Week,AgeBin) %>%
+  dplyr::select(TagID,Week,AgeBin)
+
+weekly_tag_age <- weekly_tag_age %>%
   group_by(TagID,AgeBin) %>%
   summarise(StartWeek = min(Week),
             EndWeek = max(Week)) %>%
   mutate(time_at_age = EndWeek - StartWeek) %>%
-  select(TagID, AgeBin, time_at_age)
+  select(TagID, AgeBin, time_at_age) %>%
+  right_join(weekly_tag_age)
 
 CCF_Residency_CRE <- CCF_Residency_CRE %>%
   mutate(EstimatedAge = ifelse(is.na(EstimatedAge), -1, EstimatedAge),
