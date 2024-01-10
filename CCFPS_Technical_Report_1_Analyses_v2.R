@@ -300,7 +300,7 @@ TagLife <- TagBKM_Bin %>%
   group_by(TagID, TagType) %>%
   summarise(TagLife = as.numeric(max(Date)-min(Date))) %>%
   group_by(TagType) %>%
-  summarise(TagLife = max(TagLife))
+  summarise(TagLife = max(TagLife)) #Which summary should we use? 
 
 TagFail <- release %>%
   select(TagID, Species, Date) %>%
