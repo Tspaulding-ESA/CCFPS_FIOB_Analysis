@@ -4,7 +4,9 @@ library(tidyverse)
 library(delver)
 library(sf)
 
-# delver::set_user_token([insert user token here])
+token = read_file(file.path("1. Data","Inputs","DelveToken.txt"))
 
-source(file.path("2.Code", "functions.R"))
+delver::set_user_token(token)
+
+source(file.path("2. Code", "functions.R"))
 tz_loc = "America/Los_Angeles"

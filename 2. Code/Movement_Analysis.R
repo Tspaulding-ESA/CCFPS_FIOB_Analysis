@@ -49,9 +49,9 @@ split_interval_weeks <- function(start, end, unit) {
 # This script picks up wfile.path the BKM_QAQC script ends
 
 ## Read in the detections and hydrophone data =============================
-all_bkm <- readRDS("all_bkm.rds")
+all_bkm <- readRDS(file.path("1. Data","Inputs","all_bkm.rds"))
 
-hydrophones <- read.csv("TR1_Connectivity/HydrophoneSites.csv", header = T, 
+hydrophones <- read.csv(file.path("1. Data","Inputs","HydrophoneSites.csv"), header = T, 
                         stringsAsFactors = T)
 hydrophones$SiteCode <- factor(hydrophones$SiteCode, 
                                levels = c("IC3","IC2","IC1","RGD1","RGU1",
@@ -79,7 +79,7 @@ names(DateHydTagMatrix) <- c("Week","SiteCode","HyfonNo", "TagID")
 
 ### Hydrophone Checks -----------------------------------------------------
 #Determine whether the hydrophone heard its assigned beacon tag that week
-beacons <- read.csv("TR1_Connectivity/BeaconTags.csv", header = T, stringsAsFactors = T)
+beacons <- read.csv(file.path("1. Data","Inputs","BeaconTags.csv"), header = T, stringsAsFactors = T)
 beacons$species <- "Beacon"
 
 HydBeaconMatrix <- filter(DateHydTagMatrix, 
@@ -143,9 +143,9 @@ TagBKM_Bin$BeaconDetected[is.na(TagBKM_Bin$BeaconDetected)] <- FALSE
 TagBKM_Bin$AnyDetected[is.na(TagBKM_Bin$AnyDetected)] <- FALSE
 
 ### Add in the Release Data from the CSV
-release_dates <- read.csv("TR1_Connectivity/Release_Dates.csv", 
+release_dates <- read.csv(file.path("1. Data","Inputs","Release_Dates.csv"), 
                           stringsAsFactors = F, header = T)
-release_dat <- read.csv("TR1_Connectivity/ReleaseData.csv", 
+release_dat <- read.csv(file.path("1. Data","Inputs","ReleaseData.csv"), 
                         stringsAsFactors = F, header = T)
 release <- release_dates %>%
   left_join(.,release_dat, by = "TagID")
@@ -192,7 +192,7 @@ releases <- ggplot()+
   )+
   labs(x = "Date", y = "Total Number of Released Individuals")
 
-pdf(file = file.path("Figures","ReleaseSummary.pdf"), width = 15, height = 5)
+pdf(file = file.path("1. Data","Figures","ReleaseSummary.pdf"), width = 15, height = 5)
 releases
 dev.off()
 
@@ -278,7 +278,7 @@ ShedTags_plot <- ggplot()+
   ggtitle("Analysis of Uninterrupted Detection Periods at a Single Receiver")+
   theme_classic()
   
-pdf(file = file.path("Figures","ShedTagReview.pdf"),
+pdf(file = file.path("1. Data", "Figures","ShedTagReview.pdf"),
     width = 4, height = 4.5)
 ShedTags_plot
 dev.off()
@@ -292,7 +292,7 @@ ShedTags <- Site_CRE %>%
 
 ## Estimating TagLife =====================================================
 # Tag life based on maximum Tag Life for specific tag type
-TagTypes <- read.csv("TR1_Connectivity/TagTypes.csv", header = T, 
+TagTypes <- read.csv(file.path("1. Data","Inputs","TagTypes.csv"), header = T, 
                      stringsAsFactors = F)
 TagLife <- TagBKM_Bin %>% 
   left_join(., TagTypes, by = "TagID") %>%
@@ -511,7 +511,7 @@ CCF_Residency_CRE <- CCF_Residency_CRE %>%
 # Building the age-length key table ####
 set.seed(42069)
 
-AgeData <- read.csv("TR1_Connectivity/AgedFish.csv", header = T, stringsAsFactors = F)
+AgeData <- read.csv(file.path("1. Data","Inputs","AgedFish.csv"), header = T, stringsAsFactors = F)
 
 stb.age <- AgeData[AgeData$Species == "Striped Bass" & AgeData$Length_cm >20 & AgeData$Age < 8,] %>%
   select(Length_cm, Age) %>%
@@ -1053,7 +1053,7 @@ autoplot(km_fit)
 km_fit_sp <- survival::survfit(survival::Surv(time, emmigrant)~Species, data = cre_surv[cre_surv$Species != "Beacon",])
 autoplot(km_fit_sp)
 
-pdf("TimeToEmmigration_All.pdf", width = 10, height =7)
+pdf(file.path("1. Data", "Figures", "TimeToEmmigration_All.pdf"), width = 10, height =7)
 autoplot(km_fit_sp)
 dev.off()
 
@@ -1064,7 +1064,7 @@ cre_surv_age <- cre_surv %>%
 km_fit_age <- survival::survfit(survival::Surv(time, emmigrant)~AgeBin, data = cre_surv_age)
 autoplot(km_fit_age)+theme_classic()
 
-pdf(file.path("CCFPS_V2","Figures","TimeToEmmigration_StripedBass_x_Age.pdf"), 
+pdf(file.path("1. Data", "Figures", "TimeToEmmigration_StripedBass_x_Age.pdf"), 
     width = 12, height =5)
 autoplot(km_fit_age)+theme_classic()+
   labs(title = "Time to First Exit", y = "Percent of Population Non-Emmigrated",
@@ -1120,7 +1120,7 @@ time_btwn_movements
 ### Assign minimum distance travelled in one week --------------------------
 
 #Read in Linear Distance
-distances <- read.csv("TR1_Connectivity/HydDistance.csv")
+distances <- read.csv(file.path("1. Data", "Inputs", "HydDistance.csv"))
 
 #Filter Detections
 TagBKM_Bin %>%
@@ -1878,7 +1878,7 @@ for(i in unique(clustered_dat$TagID)){
       theme(panel.spacing = unit(0, "lines"),
             axis.text.x = element_text(angle = -45, hjust = 0))+
       facet_grid(TagID ~.)
-    ggsave(file.path("CCFPS_V2","Figures","DetectionPlots",paste(tmp$TagID[1],tmp$cluster[1],"ex.pdf",sep = "-")),
+    ggsave(file.path("1. Data","Figures","DetectionPlots",paste(tmp$TagID[1],tmp$cluster[1],"ex.pdf",sep = "-")),
                 device = "pdf", width = 5, height = 2.5)
   } else {
     print("Tag not in cluster")
