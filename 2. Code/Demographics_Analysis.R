@@ -301,6 +301,11 @@ for(y in unique(combined_sb$year)){
   }
 }
 
+expanded_lengths_list <- rlist::list.clean(expanded_lengths_list,
+                                           fun = function(x) length(x) == 0L,
+                                           recursive = TRUE)
+expanded_lengths <- bind_rows(expanded_lengths_list)
+
 
 expanded_sb <- bind_rows(measured_sb, expanded_lengths) %>%
   mutate(measurement = factor(measurement, levels = c("simulated","measured")))
