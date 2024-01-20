@@ -1,52 +1,9 @@
 ######             CCFPS TECHNICAL REPORT 1 ANALYSIS            #######
-library(FSA)
-library(nlstools)
-library(lubridate)
-library(stringr)
-library(data.table)
-library(readr)
-library(dplyr)
-library(purrr)
-library(tidyverse)
-library(rlist)
-library(Hmisc)
-library(ggplot2)
-library(survival)
-library(ggfortify)
-library(gam)
 
-
-# Functions ##############################################################
-#function to turn a date into a week of the study
-date_to_studyweek <- function (date) {
-  studyweek <- floor(as.numeric(date - as_date("2013-05-03"))/7)+1
-  return(studyweek)
-}
-
-#function to find the start date of a study week
-studyweek_startdate <- function (Week) {
-  startdate <- as_date("2013-05-03")+weeks(Week-1)
-  return(startdate)
-}
-
-#Function to find the end date of a study week
-studyweek_enddate <- function (Week) {
-  enddate <- as_date("2013-05-09")+weeks(Week-1)
-  return(enddate)
-}
-
-# Create helper function to split the interval of the CRE into a given unit size (ie weeks)
-# Remember that the original weekly bin was only for detections, we are now
-# assuming that a fish is remaining in a location and need to code each week
-# it is at-large as such
-split_interval_weeks <- function(start, end, unit) {
-  breaks <- seq(floor_date(start, "day"), ceiling_date(end, "day"), by = unit)
-  timeline <- c(start, breaks[breaks > start & breaks < end], end)
-  tibble(.start = head(timeline, -1), .end = tail(timeline, -1))
-}
+source(file.path("2. Code","0_Setup.R"))
 
 # Format Data #############################################################
-# This script picks up wfile.path the BKM_QAQC script ends
+# This script picks up where original BKM_QAQC script ended (not included here)
 
 ## Read in the detections and hydrophone data =============================
 all_bkm <- readRDS(file.path("1. Data","Inputs","all_bkm.rds"))
@@ -143,12 +100,8 @@ TagBKM_Bin$BeaconDetected[is.na(TagBKM_Bin$BeaconDetected)] <- FALSE
 TagBKM_Bin$AnyDetected[is.na(TagBKM_Bin$AnyDetected)] <- FALSE
 
 ### Add in the Release Data from the CSV
-release_dates <- read.csv(file.path("1. Data","Inputs","Release_Dates.csv"), 
-                          stringsAsFactors = F, header = T)
 release_dat <- read.csv(file.path("1. Data","Inputs","ReleaseData.csv"), 
                         stringsAsFactors = F, header = T)
-release <- release_dates %>%
-  left_join(.,release_dat, by = "TagID")
 release$SiteCode <- "Release"
 release$Week <- date_to_studyweek(parse_date(release$Date, format = "%m/%d/%Y"))
 release$Detected <- TRUE
@@ -503,59 +456,12 @@ CCF_Residency_CRE <- CCF_Residency_CRE %>%
   left_join(.,release[,c(1,7)], by = "TagID") %>%
   ungroup()
 
-# Develop Age-length key based on a methods from 
-# fishR Vignette (D.Ogle 2013), based on methods from 
-# Iserman and Knight (2015)
+## Run Age Analysis =======================================================
+# source(file.path("2. Code","Age_Analysis"))
+stb.key <- read_rds(file.path("1. Data","Outputs","SB_ALKey.rds"))
+lmb.key <- read_rds(file.path("1. Data","Outputs","LMB_ALKey.rds"))
 
-## Striped Bass Aging =====================================================
-# Building the age-length key table ####
-set.seed(42069)
-
-AgeData <- read.csv(file.path("1. Data","Inputs","AgedFish.csv"), header = T, stringsAsFactors = F)
-
-stb.age <- AgeData[AgeData$Species == "Striped Bass" & AgeData$Length_cm >20 & AgeData$Age < 8,] %>%
-  select(Length_cm, Age) %>%
-  arrange(Age)
-
-x <- stb.age$Age
-y <- stb.age$Length_cm
-
-alk.lm <- lm(y ~ I(log(x)))
-
-predicted.intervals <- predict(alk.lm,data.frame(x=stb.age$Age),interval='confidence', level=0.995)
-
-#plot(stb.age$Age, stb.age$Length_cm)
-#lines(stb.age$Age, predicted.intervals[,1], col = 'red', lwd = 3)
-#lines(stb.age$Age, predicted.intervals[,2], col = 'black', lwd = 1)
-#lines(stb.age$Age, predicted.intervals[,3], col = 'black', lwd = 1)
-
-x_new <- rep(seq(2,7, by = 1), 100000)
-
-alk.lm$fitted.values <- predict(alk.lm, data.frame(x = x_new))
-
-
-y_new <- simulate(alk.lm)[,1]
-
-#plot(x_new, y_new, col = 'red')
-#points(stb.age$Age, stb.age$Length_cm, pch = 16, )
-#lines(stb.age$Age, predicted.intervals[,1], col = 'red', lwd = 3)
-#lines(stb.age$Age, predicted.intervals[,2], col = 'black', lwd = 1, lty = 2)
-#lines(stb.age$Age, predicted.intervals[,3], col = 'black', lwd = 1, lty = 2)
-
-
-alk_new <- tibble(Age = x_new, Length_cm = y_new)
-
-# Find the minimum size for use in lencat function
-FSA::Summarize(~Length_cm, data = alk_new, digits = 1)
-
-# use lencat function to define length categories for each fish starting at min 24, and increasing by 2 
-stb.age1 <- FSA::lencat(~Length_cm, data = alk_new, startcat=0, w=1)
-
-stb.raw <- with(stb.age1, table(LCat,Age))
-stb.key <- prop.table(stb.raw, margin = 1)
-round(stb.key,2)
-
-### Assign Ages to individuals at capture using age-length key ------------
+### Assign Ages to Striped Bass at capture using age-length key ------------
 stb.len <- CCF_Residency_CRE %>%
   filter(Species == "Striped Bass") %>%
   distinct(TagID, Length_cm) %>%
@@ -571,48 +477,6 @@ stb.key.expanded <- stb.key.tib %>%
   mutate(n = n*5) %>%
   map_df(., rep, .$n)
 
-## Largemouth Bass Aging ==================================================
-lmb.age <- AgeData[AgeData$Species == "Largemouth Bass",] %>%
-  select(Length_cm, Age) %>%
-  arrange(Age)
-
-x <- lmb.age$Age
-y <- lmb.age$Length_cm
-
-alk.lm <- lm(y ~ I(log(x)))
-
-predicted.intervals <- predict(alk.lm,data.frame(x=lmb.age$Age),interval='confidence', level=0.995)
-
-#plot(lmb.age$Age, lmb.age$Length_cm)
-#lines(lmb.age$Age, predicted.intervals[,1], col = 'red', lwd = 3)
-#lines(lmb.age$Age, predicted.intervals[,2], col = 'black', lwd = 1)
-#lines(lmb.age$Age, predicted.intervals[,3], col = 'black', lwd = 1)
-
-x_new <- rep(seq(2,4, by = 1), 100000)
-
-alk.lm$fitted.values <- predict(alk.lm, data.frame(x = x_new))
-
-y_new <- simulate(alk.lm)[,1]
-
-#plot(x_new, y_new, col = 'red')
-#points(lmb.age$Age, lmb.age$Length_cm, pch = 16, )
-#lines(lmb.age$Age, predicted.intervals[,1], col = 'red', lwd = 3)
-#lines(lmb.age$Age, predicted.intervals[,2], col = 'black', lwd = 1, lty = 2)
-#lines(lmb.age$Age, predicted.intervals[,3], col = 'black', lwd = 1, lty = 2)
-
-
-alk_new <- tibble(Age = x_new, Length_cm = y_new)
-
-# Find the minimum size for use in lencat function
-FSA::Summarize(~Length_cm, data = alk_new, digits = 1)
-
-# use lencat function to define length categories for each fish starting at min 24, and increasing by 2 
-lmb.age1 <- FSA::lencat(~Length_cm,data=alk_new,startcat=18,w=1)
-
-lmb.raw <- with(lmb.age1, table(LCat,Age))
-lmb.key <- prop.table(lmb.raw, margin = 1)
-round(lmb.key,2)
-
 ## Assign Ages to individuals at capture using age-length key =============
 lmb.len <- CCF_Residency_CRE %>%
   filter(Species == "Largemouth Bass") %>%
@@ -622,24 +486,8 @@ lmb.len <- CCF_Residency_CRE %>%
 lmb.len1 <- FSA::alkIndivAge(lmb.key, ~Length_cm, data = lmb.len, type = "SR", seed = 42069)
 FSA::alkPlot(lmb.key)
 
-AssignedAge <- bind_rows(stb.len1, lmb.len1)
-
-AssignedAge <- AssignedAge %>%
+AssignedAge <- bind_rows(stb.len1, lmb.len1) %>%
   rename("EstCaptureAge" = age)
-
-CCF_Residency_CRE <- CCF_Residency_CRE %>%
-  ungroup() %>%
-  left_join(., AssignedAge, by = c("TagID"))
-
-CCF_Residency_CRE <- CCF_Residency_CRE %>%
-  group_by(TagID) %>%
-  summarise(CaptureDate = min(studyweek_startdate(StartWeek))) %>%
-  left_join(CCF_Residency_CRE,., by = "TagID")%>%
-  mutate(CurrentDate = studyweek_startdate(StartWeek)) %>%
-  mutate(TimePassed = CurrentDate - CaptureDate) %>%
-  mutate(EstimatedAge =  floor(TimePassed/dyears(1))+EstCaptureAge) %>%
-  mutate(CaptureWeek = date_to_studyweek(CaptureDate)) %>%
-  select(Species, TagID, LocationChange, Location, StartWeek, EndWeek, Length_cm.x, EstCaptureAge, CaptureWeek, EstimatedAge)
 
 # Cross each tag with each week (universal dataframe)
 tag_x_weeks <- crossing(Tags,Week = Weeks)
