@@ -68,3 +68,61 @@ split_interval_weeks <- function(start, end, unit) {
   tibble(.start = head(timeline, -1), .end = tail(timeline, -1))
 }
 
+#Recreate the FSA expand Len Freq function but with sampling from a poisson distribution
+expandLenFreq2 <- function(x, w, additional, startcat = NULL, total = additional + 
+                             length(x), decimals = decs$wdec, 
+                           densfun = "Poisson",  show.summary = TRUE)
+{
+  if (!is.vector(x)) 
+    STOP("'x' must be a vector.")
+  if (!is.numeric(x)) 
+    STOP("'x' must be numeric.")
+  if (w <= 0) 
+    STOP("'w' must be positive")
+  if (!is.null(startcat)) 
+    if (startcat <= 0) 
+      STOP("'startcat' must be positive")
+  if (total < length(x)) 
+    STOP("Total number to expand to must be greater than number in 'x'.")
+  if (is.null(startcat)) 
+  startcat <- floor(min(x, na.rm = TRUE)/w) * w
+  decs <- FSA:::iCheckStartcatW(startcat, w, x)
+  num <- total - length(x)
+  lcat <- lencat(x, w = w, startcat = startcat)
+  lenfreq <- prop.table(table(lcat, dnn = NULL))
+  lambda = MASS::fitdistr(lengths, densfun = densfun)$estimate
+  cats <- seq(startcat,max(x),by = w)
+  new.lenfreq <- numeric()
+  for(i in 1:length(cats)){
+    prob = ppois(cats[i], lambda = lambda) - ppois(cats[i-1], lambda = lambda)
+    new.lenfreq[i] <- ifelse(!is_empty(prob),prob,0)
+  }
+  names(new.lenfreq) <- cats
+  reps = floor(num*new.lenfreq)
+  nrand.lens <- rep(cats, reps)
+  rand.lens <- sample(cats, num - sum(reps), replace = TRUE, 
+                      prob = new.lenfreq)
+  new.lens <- c(nrand.lens, rand.lens)
+  maxval <- w - 1/(10^decimals)
+  if (maxval > 0) {
+    new.lens <- new.lens + stats::runif(length(new.lens), 
+                                        min = 0, max = maxval)
+  }
+  new.lens <- round(new.lens, decimals)
+  if (show.summary) {
+    cat("Length Frequency Expansion using:\n", "Measured length frequency of", 
+        length(x), "individuals:\n")
+    print(round(lenfreq, 4))
+    cat("\nPoisson allocations of", length(nrand.lens), 
+        "individuals by length category\n")
+    tmp <- reps
+    print(tmp)
+    cat("\nRandom allocations of", length(rand.lens), "individuals from resampling\n", 
+        "With final length frequency table of:\n")
+    final.lens <- lencat(new.lens, w = w, startcat = startcat)
+    print(table(final.lens, dnn = NULL))
+  }
+  invisible(sort(new.lens))
+}
+
+
