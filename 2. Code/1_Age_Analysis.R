@@ -24,10 +24,10 @@ alk.lm <- lm(y ~ I(log(x)))
 
 predicted.intervals <- predict(alk.lm,data.frame(x=stb.age$Age),interval='confidence', level=0.995)
 
-#plot(stb.age$Age, stb.age$Length_cm)
-#lines(stb.age$Age, predicted.intervals[,1], col = 'red', lwd = 3)
-#lines(stb.age$Age, predicted.intervals[,2], col = 'black', lwd = 1)
-#lines(stb.age$Age, predicted.intervals[,3], col = 'black', lwd = 1)
+plot(stb.age$Age, stb.age$Length_cm)
+lines(stb.age$Age, predicted.intervals[,1], col = 'red', lwd = 3)
+lines(stb.age$Age, predicted.intervals[,2], col = 'black', lwd = 1)
+lines(stb.age$Age, predicted.intervals[,3], col = 'black', lwd = 1)
 
 x_new <- rep(seq(2,7, by = 1), 100000)
 

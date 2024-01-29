@@ -1,0 +1,10 @@
+Family,Genus,Species,a,b,Score,Sex,Lmin,Lmax,LengthType,r2,n,Country,Locality,RefNo
+Moronidae,Morone,saxatilis,0.00945,2.90700,0.50,unsexed,,,TL,,,USA,"Coos Bay, Oregon, 1949-50",1244
+Moronidae,Morone,saxatilis,0.00614,3.15300,0.50,female,,,TL,,,USA,"Chesapeake Bay",11511
+Moronidae,Morone,saxatilis,0.00472,3.22400,0.50,male,,,TL,,,USA,"Chesapeake Bay",11511
+Moronidae,Morone,saxatilis,0.00484,3.21000,0.96,female,50.00000,102.00000,TL,0.960,53,USA,"Atlantic coast / Autumn 1992-1999.",49746
+Moronidae,Morone,saxatilis,0.00966,3.06000,1.00,female,24.00000,93.00000,TL,0.996,110,USA,"Atlantic coast / Spring 1992-1999.",49746
+Moronidae,Morone,saxatilis,0.00628,3.20000,0.99,male,23.00000,81.00000,TL,0.990,76,USA,"Atlantic coast / Spring 1992-1999.",49746
+Moronidae,Morone,saxatilis,0.02015,2.89000,0.95,male,49.00000,85.00000,TL,0.950,32,USA,"Atlantic coast / Autumn 1992-1999.",49746
+Moronidae,Morone,saxatilis,0.00753,3.14000,0.99,mixed,23.00000,93.00000,TL,0.990,191,USA,"Atlantic coast / Spring 1992-1999.",49746
+Moronidae,Morone,saxatilis,0.01145,3.01400,0.96,mixed,49.00000,102.00000,TL,0.960,102,USA,"Atlantic coast / Autumn 1992-1999.",49746
