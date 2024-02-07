@@ -17,6 +17,14 @@ hydrophones$SiteCode <- factor(hydrophones$SiteCode,
 Hydrophones <- hydrophones[,c(1,5)]
 Hydrophones <- Hydrophones[!is.na(Hydrophones$SiteCode),]
 
+## Read in the Release Data and Format
+release <- read.csv(file.path("1. Data","Inputs","ReleaseData.csv"), 
+                    stringsAsFactors = F, header = T)
+release$SiteCode <- "Release"
+release$Week <- date_to_studyweek(parse_date(release$Date, format = "%m/%d/%Y"))
+release$Detected <- TRUE
+release$last_detect = lubridate::mdy(release$Date)
+
 ## Format the data and turn into a weekly detection history ===============
 # Extract the start of each bookmark into a single table
 all_bkm_week <- all_bkm %>%
@@ -25,11 +33,14 @@ all_bkm_week <- all_bkm %>%
 
 # Create a vector of all study weeks, all tags, and all hydrophones
 Weeks <- seq(1,257, by = 1)
-Tags <- all_bkm_week %>%
-  distinct(TagID)
+ReleasedTags <- release %>%
+  filter(Species == "Striped Bass") %>%
+  distinct(TagID) %>% arrange() %>% pull()
+DetectedTags <- all_bkm_week %>%
+  distinct(TagID) %>% arrange() %>% pull()
 
 # Cross all the vectors and name the columns correctly
-DateHydTagMatrix<- crossing(Weeks, hydrophones, Tags)
+DateHydTagMatrix<- crossing(Weeks, hydrophones, "TagID" = DetectedTags)
 DateHydTagMatrix <- DateHydTagMatrix %>%
   select(Weeks, SiteCode, HydrophoneID, TagID)
 names(DateHydTagMatrix) <- c("Week","SiteCode","HyfonNo", "TagID")
@@ -101,14 +112,7 @@ TagBKM_Bin <- TagBKM_Bin %>%
 TagBKM_Bin$BeaconDetected[is.na(TagBKM_Bin$BeaconDetected)] <- FALSE
 TagBKM_Bin$AnyDetected[is.na(TagBKM_Bin$AnyDetected)] <- FALSE
 
-### Add in the Release Data from the CSV
-release <- read.csv(file.path("1. Data","Inputs","ReleaseData.csv"), 
-                        stringsAsFactors = F, header = T)
-release$SiteCode <- "Release"
-release$Week <- date_to_studyweek(parse_date(release$Date, format = "%m/%d/%Y"))
-release$Detected <- TRUE
-release$last_detect = lubridate::mdy(release$Date)
-
+### Add in the Release Data
 TagBKM_Bin <- TagBKM_Bin %>%
   left_join(.,select(release, TagID, Species), by = "TagID")
 TagBKM_Bin <- bind_rows(TagBKM_Bin, 
@@ -126,7 +130,8 @@ TagBKM_Bin <- TagBKM_Bin %>%
   arrange(TagID, Week, last_detect) %>%
   mutate(Species = ifelse(TagID > 10000, "Beacon",Species)) %>%
   select(Species, TagID, Week, last_detect, SiteCode, 
-         BeaconDetected, AnyDetected)
+         BeaconDetected, AnyDetected) %>%
+  filter(Species == "Striped Bass")
 
 # Clean up
 rm(list = c("HydBeaconMatrix",
@@ -134,6 +139,7 @@ rm(list = c("HydBeaconMatrix",
 
 ### Summarise Tag Release Data --------------------------------------------
 release_summary <- release %>%
+  filter(Species == "Striped Bass") %>%
   group_by(Species, Week) %>%
   tally()
 
@@ -147,7 +153,7 @@ releases <- ggplot()+
     axis.text = element_text(angle = -45, vjust = 0.5, hjust = 0)
   )+
   labs(x = "Date", y = "Total Number of Released Individuals")+
-  theme_classic()+
+  theme_classic()
 
 pdf(file = file.path("1. Data","Figures","ReleaseSummary.pdf"), width = 15, height = 5)
 releases
@@ -274,6 +280,7 @@ TagLife_obs <- TagBKM_Bin %>%
   
 
 TagFail <- release %>%
+  filter(Species == "Striped Bass") %>%
   select(TagID, Species, Date) %>%
   left_join(.,TagTypes, "TagID") %>%
   mutate(Date = parse_date(Date, format = "%m/%d/%Y")) %>%
@@ -323,7 +330,7 @@ HydVisit <- TagBKM_Bin %>%
     SiteCode %in% c("Tag Failure") ~ "Tag Failure"))
 
 WeeklySiteVisit <- TagBKM_Bin %>%
-  filter(Species != "Beacon") %>%
+  filter(Species == "Striped Bass") %>%
   group_by(Species, Week, TagID) %>%
   summarise(SiteVisits = list(unique(as.character(SiteCode))),
             StartSite = as.character(SiteCode)[1],
@@ -353,9 +360,7 @@ TotalSiteVisitSummary <- WeeklySiteVisit %>%
     numSites = sum(NumSites)-1) %>%
   ungroup()
 
-no_detect_tags <- TotalSiteVisitSummary %>%
-  filter(numSites == 0) %>%
-  pull(TagID)
+no_detect_tags <- ReleasedTags[!(ReleasedTags %in% DetectedTags)]
 
 # Remove Fish with no detections
 WeeklySiteVisit <- WeeklySiteVisit %>%
@@ -452,6 +457,7 @@ CCF_Residency_CRE <- WeeklySiteVisit %>%
 # Gap is assumed to spent at the same location as the next site following
 # Movement
 CCF_Residency_CRE <- CCF_Residency_CRE %>%
+  filter(!(TagID %in% no_detect_tags)) %>%
   group_by(TagID) %>%
   arrange(TagID, StartWeek) %>%
   mutate(gap = lead(StartWeek)-EndWeek-1) %>%
@@ -484,17 +490,18 @@ CCF_Residency_CRE <- CCF_Residency_CRE %>%
   left_join(select(AssignedAge, TagID, EstCaptureAge), by = "TagID")
 
 # Cross each tag with each week (universal dataframe)
-tag_x_weeks <- crossing(Tags,Week = Weeks)
+tag_x_weeks <- crossing("TagID" = DetectedTags,Week = Weeks)
 
 ## Determine the Age of an Individual at Week n and Weeks at Age a.
 weekly_tag_age <- CCF_Residency_CRE %>%
+  filter(Species == "Striped Bass") %>%
   group_by(TagID) %>%
   summarise(CaptureWeek = min(StartWeek),
             CaptureAge = min(EstCaptureAge),
             EndWeek = max(EndWeek)) %>%
   left_join(tag_x_weeks) %>%
   mutate(time_from_capture = Week - CaptureWeek) %>%
-  filter(time_from_capture >= 0 | Week > EndWeek) %>%
+  filter(time_from_capture >= 0 & Week <= EndWeek) %>%
   mutate(EstimatedAge = CaptureAge + floor(time_from_capture/52)) %>%
   mutate(EstimatedAge = ifelse(is.na(EstimatedAge), -1, EstimatedAge),
          AgeBin = case_when(
@@ -922,12 +929,34 @@ dev.off()
 # Prepare the data for Cluster analysis ###################################
 
 ## Total Receivers detected On / Time at Large ============================
+TotalSiteVisitSummary <- WeeklySiteVisit %>%
+  group_by(Species,TagID) %>%
+  mutate(TAL = max(Week)-min(Week)+1) %>%
+  left_join(weekly_tag_age) %>%
+  filter(!(grepl("Tag Failure",SiteVisits)) & !(grepl("Release",SiteVisits))) %>%
+  ungroup() %>%
+  group_by(Species, TagID, TAL, AgeBin, time_at_age) %>%
+  summarise(
+    inside_sites = sum(
+      unlist(
+        lapply(SiteVisits,function(x){unlist(x, 
+                                             recursive = TRUE) %in% inside}))),
+    outside_sites = sum(
+      unlist(
+        lapply(SiteVisits,function(x){unlist(x, 
+                                             recursive = TRUE) %in% outside}))),
+    numSites = sum(NumSites)-1) %>%
+  ungroup()
+
 DetectedRcvrs <- TotalSiteVisitSummary %>%
-  select(Species, TagID, InsideSiteVisits = inside_sites, 
-         OutsideSiteVisits = outside_sites, numSites, TAL) %>%
+  select(Species, TagID, AgeBin, InsideSiteVisits = inside_sites, 
+         OutsideSiteVisits = outside_sites, numSites, TAL, time_at_age) %>%
   mutate(lifetime_inside = InsideSiteVisits/TAL,
          lifetime_outside = OutsideSiteVisits/TAL,
-         lifetime_all = numSites/TAL)
+         lifetime_all = numSites/TAL,
+         age_inside = InsideSiteVisits/time_at_age,
+         age_outside = OutsideSiteVisits/time_at_age,
+         age_all = numSites/time_at_age)
 
 ## Receivers/Wk detected On ================================================
 WkDetectedRcvrs <- WeeklySiteVisit %>%
@@ -947,6 +976,11 @@ CaptureAge <- AssignedAge %>%
     EstCaptureAge >= 6 ~ "6+"
   )) %>%
   select(TagID, CaptureAgeBin)
+
+# CaptureLength <- release %>%
+#   select(TagID, Length_cm) %>%
+#   mutate(length_class = (floor(Length_cm/5)*5)) %>%
+#   select(TagID, length_class)
 
 ## Weeks Undetected ========================================================
 Wks_Undetected <- TagBKM_Bin %>%
@@ -1050,10 +1084,14 @@ MovementFrequency <- TotalMovement %>%
     distinct(
       select(weekly_tag_age, TagID, AgeBin, time_at_age)
       )) %>%
-  mutate(Exit_freq = Exit/time_at_age,
-         Entry_freq = Entry/time_at_age,
-         All_Moves_freq = All_Moves/time_at_age) %>%
-  select(TagID, AgeBin, Exit_freq:All_Moves_freq)
+  left_join(t_large) %>%
+  mutate(Exit_age_freq = Exit/time_at_age,
+         Entry_age_freq = Entry/time_at_age,
+         All_Moves_age_freq = All_Moves/time_at_age,
+         Exit_life_freq = Exit/t_large,
+         Entry_life_freq = Entry/t_large,
+         All_Moves_life_freq = All_Moves/t_large) %>%
+  select(TagID, AgeBin, Exit_age_freq:All_Moves_life_freq)
 
 ## Average Residence Time ==================================================
 avg_residence <- CRE_Age_summary %>%
@@ -1063,7 +1101,7 @@ avg_residence <- CRE_Age_summary %>%
               names_prefix = "AvgRes_",
               values_from = "MeanResidency_Weeks",
               values_fill = 0)
-
+## Total Residence Time ====================================================
 total_residence <- CRE_Age_summary %>%
   filter(Location %in% c("INSIDE","OUTSIDE")) %>%
   select(TagID, Location, TotalResidency_Weeks) %>%
@@ -1072,10 +1110,32 @@ total_residence <- CRE_Age_summary %>%
               values_from = "TotalResidency_Weeks",
               values_fill = 0)
 
+## Residence Time as a percent of time at large
+percent_residence <- total_residence %>%
+  left_join(t_large) %>%
+  mutate(PercRes_Inside = TotRes_INSIDE/t_large,
+         PercRes_Outside = TotRes_OUTSIDE/t_large,
+         PercRes_IO = TotRes_INSIDE/TotRes_OUTSIDE)
+
+## Gate Operations and Water Year Type =====================================
+gate_ops <- readRDS(file.path("1. Data","Outputs","radial_gate_summary.rds"))
+
+tbl_split_weeks %>%
+  mutate(week = date_to_studyweek(.start)) %>% 
+  ungroup() %>%
+  left_join(gate_ops, by = "week") %>% 
+  select(TagID, AgeBin, week, wyt, perc_open) %>%
+  filter(!is.na(wyt)) %>% # Few couple weeks are missing data
+  ungroup() %>% 
+  group_by(TagID, AgeBin) %>%
+  summarise(wyt = getmode(wyt),
+            gate_perc_open = mean(perc_open, na.rm = TRUE)) -> gate_ops
+
 ## Join the Data
 dat <- DetectedRcvrs %>%
   left_join(WkDetectedRcvrs) %>%
   left_join(CaptureAge,) %>%
+  #left_join(CaptureLength) %>%
   left_join(Wks_Undetected) %>%
   left_join(time_btwn_movements) %>%
   left_join(Distances) %>%
@@ -1087,14 +1147,18 @@ dat <- DetectedRcvrs %>%
   left_join(MovementFrequency) %>%
   left_join(avg_residence) %>%
   left_join(total_residence) %>%
+  left_join(gate_ops, by = c("TagID","AgeBin")) %>%
   filter(Species %in% c("Striped Bass",
                         "Largemouth Bass"
   )) %>%
   filter(!(TagID %in% no_detect_tags)) %>% # Remove tags with no detections
   replace_na(list(Species = NA,
                   TagID = NA,
+                  CaptureAge = NA,
                   lifetime_inside = 0,
                   lifetime_outside = 0,
+                  age_inside = 0,
+                  age_outside = 0,
                   InsideSiteVisits = 0,
                   OutsideSiteVisits = 0,
                   numSites = 0,
@@ -1117,24 +1181,31 @@ dat <- DetectedRcvrs %>%
                   Entry = 0, 
                   Exit = 0, 
                   All_Moves = 0,
-                  Exit_freq = 0,
-                  Entry_freq = 0,
-                  All_Moves_freq = 0,
+                  Exit_life_freq = 0,
+                  Entry_life_freq = 0,
+                  All_Moves_life_freq = 0,
+                  Exit_age_freq = 0,
+                  Entry_age_freq = 0, 
+                  All_Moves_age_freq = 0,
                   AvgRes_INSIDE = 0, 
                   AvgRes_OUTSIDE = 0, 
                   TotRes_INSIDE = 0, 
-                  TotRes_OUTSIDE = 0)) %>%
+                  TotRes_OUTSIDE = 0,
+                  gate_perc_open = 0,
+                  wyt = "Critical")) %>%
   mutate(TagAge = paste(TagID, AgeBin, sep = "-"),
          #Species = ifelse(Species == "Striped Bass",1,2),
          AgeBin = as.numeric(factor(AgeBin, levels = c("0","1-2","3-5","6+"))),
          FirstExitAgeBin = as.numeric(factor(FirstExitAgeBin, 
                                              levels = c("0","1-2","3-5","6+"))),
          CaptureAgeBin = as.numeric(factor(CaptureAgeBin, levels = c("0","1-2","3-5","6+"))),
+         wyt = as.numeric(wyt)
   ) %>%
   filter(!is.na(CaptureAgeBin)) %>%
   column_to_rownames(var = "TagAge") %>%
-  select(-TagID,
-         -Species
-         )
+  select(-Species,
+         -TagID,
+         -TAL,
+         -time_at_age)
 
 saveRDS(dat, file.path("1. Data", "Outputs" , "Cluster_Analysis_Data.rds"))

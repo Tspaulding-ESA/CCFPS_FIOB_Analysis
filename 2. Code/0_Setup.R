@@ -14,8 +14,11 @@ library(ggplot2)
 library(survival)
 library(ggfortify)
 library(gam)
+library(cder)
 #devtools::install_github("o1iv3r/FeatureImpCluster")
 library(FeatureImpCluster)
+#devtools::install_github("EnvironmentalScienceAssociates/esaRmisc")
+library(esaRmisc)
 
 token = read_file(file.path("1. Data","Inputs","DelveToken.txt"))
 
