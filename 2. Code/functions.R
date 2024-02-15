@@ -3,6 +3,11 @@ getmode <- function(v) {
   uniqv[which.max(tabulate(match(v, uniqv)))]
 }
 
+getmode2 <- function(v) {
+  uniqv <- unique(v)
+  uniqv[which.max(tabulate(match(v, uniqv)))]
+}
+
 fix_names <- function(data){
   new_names = gsub("-|\\s+", "_", tolower(names(data)))
   setNames(data, new_names)
