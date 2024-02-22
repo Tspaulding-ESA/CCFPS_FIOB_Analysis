@@ -846,17 +846,17 @@ seasons %>%
 assigned_dat%>%
   separate(TagAge,into = c("TagID","AgeBin"), sep = "-",
            extra = "merge") %>%
-  select(TagID, AgeBin, cluster) %>%
+  select(TagID, AgeBin, season, cluster) %>%
   separate("AgeBin", into = c("AgeBin","extra"), sep = "-",
            extra = "merge") %>%
-  group_by(TagID,AgeBin) %>%
+  group_by(TagID, AgeBin, season) %>%
   select(-extra) %>%
   mutate(AgeBin = case_when(
     AgeBin == "1" ~ "1-2",
     AgeBin == "3" ~ "3-5",
     TRUE ~ "6+"
   )) %>%
-  summarise(cluster_list = list(as.character(cluster)))%>%
+  summarise(cluster_list = list(as.character(cluster)))%>% View()
   mutate(primary_cluster = getmode(unlist(cluster_list)),
          secondary_cluster = getmode(unlist(cluster_list)[which(unlist(cluster_list) != primary_cluster)])) %>%
   mutate(primary_cluster = as.character(primary_cluster),
@@ -865,7 +865,6 @@ assigned_dat%>%
 for(i in (tag_clusters %>% pull(var = "TagID"))){
   tmp <- TagBKM_Bin %>%
     filter(TagID == i) %>%
-    filter(SiteCode != "Tag Failure") %>%
     mutate(TagID = as.character(TagID)) %>%
     left_join(tag_clusters)
   

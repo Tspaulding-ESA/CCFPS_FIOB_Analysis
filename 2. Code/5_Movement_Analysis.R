@@ -160,9 +160,9 @@ dev.off()
 
 # Check a tag
 ggplot()+
-  geom_point(data = TagBKM_Bin[TagBKM_Bin$TagID %in% c(5004.24),], 
+  geom_point(data = TagBKM_Bin[TagBKM_Bin$TagID %in% c(6012.24),], 
              aes(x = Week, y = SiteCode, group = TagID))+
-  geom_step(data = TagBKM_Bin[TagBKM_Bin$TagID %in% c(5004.24),], 
+  geom_step(data = TagBKM_Bin[TagBKM_Bin$TagID %in% c(6012.24),], 
             aes(x = Week, y = SiteCode, group = TagID))+
   scale_y_discrete()+
   theme(panel.spacing = unit(0, "lines"))+
@@ -255,11 +255,32 @@ ShedTags <- Site_CRE %>%
   mutate(Shed = ifelse(duration > qnt_99,TRUE,FALSE)) %>%
   filter(Shed == T) %>%
   group_by(TagID)%>%
-  summarise(ShedWeek = min(StartWeek)+1)
-
+  summarise(ShedWeek = min(StartWeek)+1) %>%
+  #Adjust for tags which were falsely flagged as shed see below
+  mutate(ShedWeek = ifelse(TagID %in% c(9785.22, 9637.06, 9302.16, 9077.06,
+                                        8980.24, 8965.06, 8937.06, 8601.06,
+                                        8518.16, 7894.31, 7734.16, 7468.24,
+                                        7418.31, 7306.31, 7118.16, 6852.24,
+                                        6572.24, 6040.24, 6012.24, 5290.31
+  ), 257, ShedWeek))
+  
 TagBKM_Bin %>%
   left_join(ShedTags) %>%
-  mutate(ShedWeek = ifelse(is.na(ShedWeek),257,ShedWeek)) %>%
+  mutate(ShedWeek = ifelse(is.na(ShedWeek),257,ShedWeek)) ->TagBKM_Bin
+
+for(i in ShedTags$TagID){
+  print(ggplot()+
+          geom_point(data = TagBKM_Bin[TagBKM_Bin$TagID %in% c(i),], 
+                     aes(x = Week, y = SiteCode, group = TagID))+
+          geom_step(data = TagBKM_Bin[TagBKM_Bin$TagID %in% c(i),], 
+                    aes(x = Week, y = SiteCode, group = TagID))+
+          geom_vline(data = TagBKM_Bin[TagBKM_Bin$TagID %in% c(i),],
+                     aes(xintercept = ShedWeek), color = "red", linewidth = 2)+
+          labs(title = i)+
+          scale_y_discrete())
+}
+
+TagBKM_Bin %>%
   filter(Week < ShedWeek) -> TagBKM_Bin
 
 ## Estimating TagLife =====================================================
@@ -287,7 +308,6 @@ TagLife_obs <- TagBKM_Bin %>%
   mutate(Date = studyweek_startdate(Week)) %>%
   summarise(TagLife_obs = as.numeric(max(Date)-min(Date)))
   
-
 TagFail <- release %>%
   filter(Species == "Striped Bass") %>%
   select(TagID, Species, Date) %>%
@@ -317,7 +337,7 @@ TagBKM_Bin <- TagBKM_Bin %>%
 # Check some tags 
 png(file = file.path("1. Data", "Figures","ExampleTagDetection.png"),
     width = 10, height = 4.5, units ="in", res = 300)
-(ggplot(TagBKM_Bin[TagBKM_Bin$TagID %in% c(5004.24) & 
+(ggplot(TagBKM_Bin[TagBKM_Bin$TagID %in% c(6012.24) & 
                     TagBKM_Bin$SiteCode != "Tag Failure",])+
   geom_point(aes(x = studyweek_startdate(Week), y = SiteCode, group = TagID))+
   geom_step(aes(x = studyweek_startdate(Week), y = SiteCode, group = TagID))+
@@ -704,12 +724,12 @@ migrants$Entries <- replace_na(migrants$Entries,0)
 migrants <- migrants %>%
   pivot_longer(cols = c(Entries,Exits), names_to = "Movement", values_to = "Count")
 
-ggplot(migrants %>% filter(Species == "Striped Bass")) +
-  #geom_jitter(aes(x = AgeBin, y = Count, color = Movement))+
-  geom_boxplot(aes(x = AgeBin, y = Count, color = Movement, 
-                   group = interaction(AgeBin, Movement)),
+ggplot(migrants) +
+  geom_jitter(aes(x = AgeBin, y = Count, color = Movement))+
+  geom_violin(aes(x = AgeBin, y = Count, color = Movement, 
+                   group = interaction(AgeBin,Movement)),
                size = 1, fill = "grey95")+
-  facet_grid(Species ~.)+
+  scale_color_discrete()+
   theme_classic()
 ggsave(file.path("1. Data", "Figures","Movements_by_Age.png"), device = "png",
        width = 6, height = 4)
