@@ -648,11 +648,31 @@ CRE_Movement <- CCF_Residency_CRE %>%
     # If current week is a Full Transit and both before and after are the same,
     # then assume a complete entry and exit or exit and entry
     Location %in% c("FULL TRANSIT") & 
-      lag(Location) == lead(Location) ~ "FULL TRANSIT",
+      lag(Location) == lead(Location) ~ "ENTRY AND EXIT",
     # If its a Partial Transit and the both before and after are the same, 
     # then do not assume an actual transit, unresolved. 
     Location %in% c("PARTIAL TRANSIT") & 
       lag(Location) == lead(Location) ~ "UNRESOLVED TRANSIT",
+    # Check the above instances when the current and last location are transits
+    Location %in% c("FULL TRANSIT","PARTIAL TRANSIT") &
+      lag(Location) %in% c("FULL TRANSIT","PARTIAL TRANSIT") &
+      lag(Location,2) == "OUTSIDE" & 
+      lead(Location) == "INSIDE" ~ "ENTRY",
+    # Opposite of above for exit
+    Location %in% c("FULL TRANSIT","PARTIAL TRANSIT") &
+      lag(Location) %in% c("FULL TRANSIT","PARTIAL TRANSIT") & 
+      lag(Location,2) == "INSIDE" & 
+      lead(Location) == "OUTSIDE" ~ "EXIT",
+    # If current week is a Full Transit and both before and after are the same,
+    # then assume a complete entry and exit or exit and entry
+    Location %in% c("FULL TRANSIT", "PARTIAL TRANSIT") &
+      lag(Location %in% c("FULL TRANSIT")) &
+      lag(Location,2) == lead(Location) ~ "ENTRY AND EXIT x 2",
+    # If its a Partial Transit and the both before and after are the same, 
+    # then do not assume an actual transit, unresolved. 
+    Location %in% c("PARTIAL TRANSIT") &
+      lag(Location %in% c("FULL TRANSIT","PARTIAL TRANSIT")) &
+      lag(Location,2) == lead(Location) ~ "UNRESOLVED TRANSIT",
     # If none of the above are true and there is a Full Transit, and the next 
     # location is outside, "EXIT"
     Location == "FULL TRANSIT" & 
@@ -702,18 +722,24 @@ CRE_Movement$move_direction <- ifelse(
 emigrants <- CRE_Movement %>%
   filter(Species %in% c("Striped Bass","Largemouth Bass")) %>%
   ungroup() %>%
-  filter(move_direction %in% c("EXIT", "FULL TRANSIT")) %>%
+  filter(move_direction %in% c("EXIT", "ENTRY AND EXIT", "ENTRY AND EXIT x 2")) %>%
+  mutate(count = case_when(
+    move_direction == "ENTRY AND EXIT x 2" ~ 2,
+    TRUE ~ 1)
+  ) %>%
   group_by(Species, TagID, AgeBin) %>%
-  tally() %>%
-  rename("Exits" = n)
+  summarise(Exits = sum(count))
 #Entries and Full Transits (at least 1 entry)
 immigrants <- CRE_Movement %>%
   filter(Species %in% c("Striped Bass","Largemouth Bass")) %>%
   ungroup() %>%
-  filter(move_direction %in% c("ENTRY", "FULL TRANSIT")) %>%
-  group_by(TagID, AgeBin) %>%
-  tally() %>%
-  rename("Entries" = n)
+  filter(move_direction %in% c("ENTRY", "ENTRY AND EXIT", "ENTRY AND EXIT x 2")) %>%
+  mutate(count = case_when(
+    move_direction == "ENTRY AND EXIT x 2" ~ 2,
+    TRUE ~ 1)
+  ) %>%
+  group_by(Species, TagID, AgeBin) %>%
+  summarise(Entries = sum(count))
 
 migrants <-emigrants %>%
   left_join(immigrants)
@@ -724,11 +750,12 @@ migrants$Entries <- replace_na(migrants$Entries,0)
 migrants <- migrants %>%
   pivot_longer(cols = c(Entries,Exits), names_to = "Movement", values_to = "Count")
 
-ggplot(migrants) +
-  geom_jitter(aes(x = AgeBin, y = Count, color = Movement))+
-  geom_violin(aes(x = AgeBin, y = Count, color = Movement, 
-                   group = interaction(AgeBin,Movement)),
-               size = 1, fill = "grey95")+
+ggplot(migrants %>% filter(!is.na(AgeBin))) +
+  #geom_jitter(aes(x = AgeBin, y = Count, color = Movement))+
+  geom_violin(aes(x = AgeBin, y = Count, 
+                  color = Movement,
+                  group = interaction(AgeBin, Movement, sep = "-")),
+              size = 1, fill = "grey95")+
   scale_color_discrete()+
   theme_classic()
 ggsave(file.path("1. Data", "Figures","Movements_by_Age.png"), device = "png",
