@@ -429,27 +429,14 @@ WeeklySiteVisit$Location <- lapply(WeeklySiteVisit$SiteVisits,
                                # Any week where ALL detections are "Tag Failure"
                                all(x == "Tag Failure") ~ "Tag Failure",
                                # Anything else is a partial transit (i.e. may
-                               # or may not have actually crossed the gates)
-                               TRUE ~ "PARTIAL TRANSIT"))
-
-# Determine if a partial transit can be coded as inside or outside based on its
-# final detection that week
-WeeklySiteVisit <- WeeklySiteVisit %>%
-  mutate(
-    Location = ifelse(
-      #As long as the last detection that week was not "RGD1" or "RGU1"...
-      Location == "PARTIAL TRANSIT" & 
-        !(EndSite %in% c("RGD1","RGU1")), 
-      case_when(
-        # If it was outside, code location to outside
-        EndSite %in% outside ~ "OUTSIDE",
-        # If it was inside, code location to inside
-        EndSite %in% inside ~ "INSIDE",
-        # Backup in case I made a mistake, if both start and end are radial
-        # gate detects, it's unresolved
-        StartSite == "RGU1" & EndSite == "RGD1" ~ "UNRESOLVED TRANSIT",
-        StartSite == "RGD1" & EndSite == "RGU1" ~ "UNRESOLVED TRANSIT"),
-      Location))
+                               # or may not have actually crossed the gates) 
+                               # Code locations based on additional detections, 
+                               # maintain potential Transit State
+                               any(x %in% outside) &
+                                 any(x %in% "RGD1") ~ "OUTSIDE - PARTIAL TRANSIT",
+                               any(x %in% inside) &
+                                 any(x %in% "RGU1") ~ "INSIDE - PARTIAL TRANSIT",
+                               TRUE ~ "MANUAL CHECK"))
 
 # For the last Location, since it is tag failure
 # Code location to be equal to the last known location
@@ -466,7 +453,7 @@ WeeklySiteVisit <- WeeklySiteVisit %>%
                     TRUE ~ "Tag Failure"),  
                   Location)) %>%
   mutate(Location = ifelse(EndSite == "Tag Failure" & 
-                             lag(Location) == "PARTIAL TRANSIT",
+                             grepl("PARTIAL TRANSIT",lag(Location)),
                            "UNRESOLVED",Location),
          Location = ifelse(Location == "Tag Failure",lag(Location), Location))
 
@@ -584,18 +571,20 @@ saveRDS(outside, file.path('1. Data',"Outputs","outside_sites.rds"))
 CCF_Residency_CRE <- CCF_Residency_CRE %>% 
   mutate(Duration_Weeks = as.integer(EndWeek - StartWeek + 1)) %>%
   filter(Species != "Beacon" | Location != "Tag Failure") %>%
-  mutate(Location = factor(Location, levels = c("INSIDE","ESTIMATED INSIDE",
-                                                "FULL TRANSIT", "PARTIAL TRANSIT",
+  mutate(Location = factor(Location, levels = c("INSIDE",
+                                                "INSIDE - PARTIAL TRANSIT",
+                                                "FULL TRANSIT", 
+                                                "OUTSIDE - PARTIAL TRANSIT",
                                                 "ESTIMATED OUTSIDE","OUTSIDE",
                                                 "UNRESOLVED")))
 CCF_Residency_CRE %>% 
-  filter(EstCaptureAge > 0 & !grepl("TRANSIT",Location)) %>% 
+  filter(EstCaptureAge > 0 & !grepl("FULL TRANSIT",Location)) %>% 
   group_by(AgeBin, Location) %>%
   summarise(n = n(),
             pos = -20)-> res_tally
   
 cre_plot <- ggplot(CCF_Residency_CRE[CCF_Residency_CRE$EstCaptureAge > 0,] %>%
-                     filter(Species == "Striped Bass" & !grepl("TRANSIT",Location))
+                     filter(Species == "Striped Bass" & !grepl("FULL TRANSIT",Location))
                    )+
   geom_boxplot(aes(x = Location,
                    y = Duration_Weeks,color = Location, group = Location),
@@ -638,11 +627,11 @@ CRE_Movement <- CCF_Residency_CRE %>%
   mutate(move_direction = case_when(
     # If the Current Week is some form of transit, but prior is outside, and 
     # after is inside, then this is an entry
-    Location %in% c("FULL TRANSIT","PARTIAL TRANSIT") & 
+    Location %in% c("FULL TRANSIT") & 
       lag(Location) == "OUTSIDE" & 
       lead(Location) == "INSIDE" ~ "ENTRY",
     # Opposite of above for exit
-    Location %in% c("FULL TRANSIT","PARTIAL TRANSIT") & 
+    Location %in% c("FULL TRANSIT") & 
       lag(Location) == "INSIDE" & 
       lead(Location) == "OUTSIDE" ~ "EXIT",
     # If current week is a Full Transit and both before and after are the same,
@@ -654,24 +643,24 @@ CRE_Movement <- CCF_Residency_CRE %>%
     Location %in% c("PARTIAL TRANSIT") & 
       lag(Location) == lead(Location) ~ "UNRESOLVED TRANSIT",
     # Check the above instances when the current and last location are transits
-    Location %in% c("FULL TRANSIT","PARTIAL TRANSIT") &
-      lag(Location) %in% c("FULL TRANSIT","PARTIAL TRANSIT") &
+    Location %in% c("FULL TRANSIT") &
+      lag(Location) %in% c("FULL TRANSIT") &
       lag(Location,2) == "OUTSIDE" & 
       lead(Location) == "INSIDE" ~ "ENTRY",
     # Opposite of above for exit
-    Location %in% c("FULL TRANSIT","PARTIAL TRANSIT") &
-      lag(Location) %in% c("FULL TRANSIT","PARTIAL TRANSIT") & 
+    Location %in% c("FULL TRANSIT") &
+      lag(Location) %in% c("FULL TRANSIT") & 
       lag(Location,2) == "INSIDE" & 
       lead(Location) == "OUTSIDE" ~ "EXIT",
     # If current week is a Full Transit and both before and after are the same,
     # then assume a complete entry and exit or exit and entry
-    Location %in% c("FULL TRANSIT", "PARTIAL TRANSIT") &
+    Location %in% c("FULL TRANSIT") &
       lag(Location %in% c("FULL TRANSIT")) &
-      lag(Location,2) == lead(Location) ~ "ENTRY AND EXIT x 2",
+      lag(Location,2) == lead(Location) ~ "ENTRY AND EXIT",
     # If its a Partial Transit and the both before and after are the same, 
     # then do not assume an actual transit, unresolved. 
-    Location %in% c("PARTIAL TRANSIT") &
-      lag(Location %in% c("FULL TRANSIT","PARTIAL TRANSIT")) &
+    grepl("PARTIAL TRANSIT",Location) &
+      grepl("PARTIAL TRANSIT", lag(Location)) &
       lag(Location,2) == lead(Location) ~ "UNRESOLVED TRANSIT",
     # If none of the above are true and there is a Full Transit, and the next 
     # location is outside, "EXIT"
@@ -681,16 +670,24 @@ CRE_Movement <- CCF_Residency_CRE %>%
     # location is inside, "ENTRY"
     Location == "FULL TRANSIT" & 
       lead(Location) == "INSIDE" ~ "ENTRY",
+    # If the week prior was a partial transit from INSIDE and this week is
+    # outside, code as a movement
+    grepl("INSIDE - PARTIAL TRANSIT", Location) &
+      grepl("OUTSIDE", lag(Location)) ~ "ENTRY",
+    grepl("OUTSIDE - PARTIAL TRANSIT", Location) &
+      grepl("INSIDE", lag(Location)) ~ "EXIT",
     # If the location is not a full transit and the current location is
     # different from the last location ...
     !(Location %in% c("FULL TRANSIT")) & 
       Location != lag(Location) ~ case_when(
         # If the last location was "Outside" and now "Inside", Entry
-        lag(Location) == "OUTSIDE" & Location == "INSIDE" ~ "ENTRY",
+        grepl("OUTSIDE",lag(Location)) & grepl("INSIDE",Location) ~ "ENTRY",
         # If the last location was "Inside" and now "Outside", Exit
-        lag(Location) == "INSIDE" & Location == "OUTSIDE" ~ "EXIT",
+        grepl("INSIDE",lag(Location)) & grepl("OUTSIDE",Location) ~ "EXIT",
         # If the next location is the same as the current, No Transit
-        lead(Location) == Location ~ "NOT TRANSIT"),
+        grepl("INSIDE",lag(Location)) & grepl("INSIDE",Location) ~ "NOT TRANSIT",
+        # If the last location was "Inside" and now "Outside", Exit
+        grepl("OUTSIDE",lag(Location)) & grepl("OUTSIDE",Location) ~ "NOT TRANSIT"),
     #Otherwise it's unresolved
     TRUE ~ "UNRESOLVED TRANSIT"))
 
@@ -720,7 +717,6 @@ CRE_Movement$move_direction <- ifelse(
 # Develop a table of Migrants #############################################
 #Exits and Full Transits (at least 1 exit)
 emigrants <- CRE_Movement %>%
-  filter(Species %in% c("Striped Bass","Largemouth Bass")) %>%
   ungroup() %>%
   filter(move_direction %in% c("EXIT", "ENTRY AND EXIT", "ENTRY AND EXIT x 2")) %>%
   mutate(count = case_when(
@@ -752,7 +748,7 @@ migrants <- migrants %>%
 
 ggplot(migrants %>% filter(!is.na(AgeBin))) +
   #geom_jitter(aes(x = AgeBin, y = Count, color = Movement))+
-  geom_violin(aes(x = AgeBin, y = Count, 
+  geom_boxplot(aes(x = AgeBin, y = Count, 
                   color = Movement,
                   group = interaction(AgeBin, Movement, sep = "-")),
               size = 1, fill = "grey95")+
@@ -793,7 +789,7 @@ tbl_split_weeks <- CRE_Movement %>%
 transits <- CRE_Movement %>%
   filter(Species != "Catfish") %>%
   ungroup() %>%
-  filter(move_direction %in% c("ENTRY","EXIT", "FULL TRANSIT") & Species != "Beacon") %>%
+  filter(move_direction %in% c("ENTRY","EXIT", "ENTRY AND EXIT", "ENTRY AND EXIT x 2") & Species != "Beacon") %>%
   group_by(Species, TagID) %>%
   tally %>%
   rename("transits" = n)

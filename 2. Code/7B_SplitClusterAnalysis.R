@@ -11,27 +11,36 @@ library(dendextend)
 set.seed(123)
 
 ## Formatting ==============================================================
-datT1_mig <- dat %>% 
-  filter(emmigrant ==TRUE) %>% 
+dat_trns <- dat %>% 
+  filter(residence_total_OUTSIDE > 0 |
+           outside_sites_total > 0)
+
+datT1_trns <- dat_trns %>%
   decostand(method = "standardize") %>% 
-  select(-emmigrant)
-datT1_res <- dat %>% 
-  filter(emmigrant ==FALSE) %>% 
+  select(-emmigrant) %>%
+  filter(!is.na(AgeBin))
+
+dat_res <- dat %>% 
+  filter(residence_total_OUTSIDE == 0 &
+           outside_sites_total == 0) 
+
+datT1_res <- dat_res %>%
   decostand(method = "standardize") %>%
   select(-emmigrant, -outside_sites_total, -outside_site_freq, -exit_total, 
          -exit_freq, -entry_total, -entry_freq, -all_total, -all_freq,
          -residence_max_OUTSIDE, -residence_mean_OUTSIDE, -residence_total_OUTSIDE,
-         -mean_exit_woy, -mean_entry_woy)
+         -mean_exit_woy, -mean_entry_woy)%>%
+  filter(!is.na(AgeBin))
 # Exploration ==============================================================
 
 ## Correlation plot ========================================================
-corr_mig = cor(datT1_mig)
+corr_trns = cor(datT1_trns)
 corr_res = cor(datT1_res)
 
-testRes_mig = corrplot::cor.mtest(datT1_mig, conf.level = 0.95)
+testRes_trns = corrplot::cor.mtest(datT1_trns, conf.level = 0.95)
 testRes_res = corrplot::cor.mtest(datT1_res, conf.level = 0.95)
 
-corrplot::corrplot(corr_mig, p.mat = testRes_mig$p, method = 'circle', type = 'lower', 
+corrplot::corrplot(corr_trns, p.mat = testRes_trns$p, method = 'circle', type = 'lower', 
                    insig='blank',
                    #addCoef.col ='black', 
                    number.cex = 0.2, order = 'AOE', diag=FALSE)
@@ -41,58 +50,61 @@ corrplot::corrplot(corr_res, p.mat = testRes_res$p, method = 'circle', type = 'l
                    #addCoef.col ='black', 
                    number.cex = 0.2, order = 'AOE', diag=FALSE)
 
-corr_mig <- as_tibble(corr_mig)
+corr_trns <- as_tibble(corr_trns)
 corr_res <- as_tibble(corr_res)
-(corr_mig <- corr_mig %>%
-  mutate(V1 = names(corr_mig)) %>%
+corr_trns <- corr_trns %>%
+  mutate(V1 = names(corr_trns)) %>%
   pivot_longer(cols = AgeBin:gate_perc_open,
                names_to = "V2",values_to = "corr") %>%
   filter(V1 != V2) %>%
-  arrange(desc(corr)))
-(corr_res <- corr_res %>%
+  arrange(desc(corr))
+View(corr_trns)
+
+corr_res <- corr_res %>%
   mutate(V1 = names(corr_res)) %>%
   pivot_longer(cols = AgeBin:gate_perc_open,
                names_to = "V2",values_to = "corr") %>%
   filter(V1 != V2) %>%
-  arrange(desc(corr)))
+  arrange(desc(corr))
+View(corr_res)
 
 # Remove Variables with >95% correlation (same variable only)
-datT2_mig <- datT1_mig %>%
+datT2_trns <- datT1_trns %>%
   select(-time_btwn_mvmts_max, -residence_max_OUTSIDE,
-         -CaptureAgeBin)
+         )
 datT2_res <- datT1_res %>%
   select(-time_btwn_detects_max, -time_btwn_mvmts_max,
-         -CaptureAgeBin, all_site_freq, all_sites_total, )
+         all_site_freq, all_sites_total, )
 
 ## Principal Components ====================================================
-fit_mig <- prcomp(datT2_mig)
+fit_trns <- prcomp(datT2_trns)
 fit_res <- prcomp(datT2_res)
 
-summary(fit_mig) # print variance accounted for
+summary(fit_trns) # print variance accounted for
 summary(fit_res) # print variance accounted for
 
 
-plot(fit_mig, type="lines") # scree plot
+plot(fit_trns, type="lines") # scree plot
 plot(fit_res,type="lines") # scree plot
 
-biplot(fit_mig, cex = c(0.1,.75), scale = 1) #PCA Biplot
+biplot(fit_trns, cex = c(0.1,.75), scale = 1) #PCA Biplot
 biplot(fit_res, cex = c(0.1,.75), scale = 1) #PCA Biplot
 
-png(file.path("1. Data","Figures","Migrant_PCA_biplot.png"), width = 10, height = 10,
+png(file.path("1. Data","Figures","Transient_PCA_biplot.png"), width = 10, height = 10,
     units = "in", res = 600)
-biplot(fit_mig, cex = c(0.1,.75), scale = 1) #PCA Biplot
+biplot(fit_trns, cex = c(0.1,.75), scale = 1, main = "Transient") #PCA Biplot
 dev.off()
 
 png(file.path("1. Data","Figures","Resident_PCA_biplot.png"), width = 10, height = 10,
     units = "in", res = 600)
-biplot(fit_res, cex = c(0.1,.75), scale = 1) #PCA Biplot
+biplot(fit_res, cex = c(0.1,.75), scale = 1, main = "Resident") #PCA Biplot
 dev.off()
 
 ## Dendogram ===============================================================
-datEuc_mig <- vegdist(datT2_mig, method = "euclidean", na.rm = TRUE)
+datEuc_trns <- vegdist(datT2_trns, method = "euclidean", na.rm = TRUE)
 datEuc_res <- vegdist(datT2_res, method = "euclidean", na.rm = TRUE)
 
-euc_agnes_mig <- cluster::agnes(datEuc_mig, method = "ward")
+euc_agnes_trns <- cluster::agnes(datEuc_trns, method = "ward")
 euc_agnes_res <- cluster::agnes(datEuc_res, method = "ward")
 
 
@@ -125,24 +137,24 @@ labelCol_age <- function(x) {
   return(x)
 }
 
-dg_mig <- as.dendrogram(euc_agnes_mig)
-dg_mig <- dendextend::remove_nodes_nodePar(dg_mig)
-dg_mig_season <- dendrapply(dg_mig, labelCol_season)
-dg_mig_age <- dendrapply(dg_mig, labelCol_age)
+dg_trns <- as.dendrogram(euc_agnes_trns)
+dg_trns <- dendextend::remove_nodes_nodePar(dg_trns)
+dg_trns_season <- dendrapply(dg_trns, labelCol_season)
+dg_trns_age <- dendrapply(dg_trns, labelCol_age)
 
 dg_res <- as.dendrogram(euc_agnes_res)
 dg_res <- dendextend::remove_nodes_nodePar(dg_res)
 dg_res_season <- dendrapply(dg_res, labelCol_season)
 dg_res_age <- dendrapply(dg_res, labelCol_age)
 
-plot(dg_mig_age)
+plot(dg_trns_age)
 plot(dg_res_age)
 
-png(file.path("1. Data","Figures","Migrant_Dendrogram.png"), 
+png(file.path("1. Data","Figures","Transient_Dendrogram.png"), 
     width = 12, height = 6,
     units = "in", res = 600)
 par(mar = c(0.1,3,0.1,0.11))
-plot(dg_mig_age)
+plot(dg_trns_age)
 #dendextend::rect.dendrogram(dg, k = 5)
 #abline(h=5, col="blue", lwd = 2)
 #abline(h=4, col="green", lwd = 2)
@@ -162,13 +174,13 @@ dev.off()
 
 ### WSS Plot ---------------------------------------------------------------
 # Want to look for the bend in the curve
-fviz_nbclust(datT2_mig, kmeans, method = "wss", nboot = 1000)
+fviz_nbclust(datT2_trns, kmeans, method = "wss", nboot = 1000)
 fviz_nbclust(datT2_res, kmeans, method = "wss", nboot = 1000)
 
-png(file.path("1. Data","Figures","Migrant_WSS_Plot.png"), 
+png(file.path("1. Data","Figures","Transient_WSS_Plot.png"), 
     width = 8, height = 6,
     units = "in", res = 600)
-fviz_nbclust(datT2_mig, kmeans, method = "wss", nboot = 1000)
+fviz_nbclust(datT2_trns, kmeans, method = "wss", nboot = 1000)
 dev.off ()
 
 png(file.path("1. Data","Figures","Resident_WSS_Plot.png"), 
@@ -179,10 +191,14 @@ dev.off ()
 
 ### Silhouette Plot --------------------------------------------------------
 # Want to get the highest mean sihouette 
-png(file.path("1. Data","Figures","Migrant_Sil_Plot.png"), 
+fviz_nbclust(datT2_trns, kmeans, method = "silhouette", nboot = 1000)
+fviz_nbclust(datT2_res, kmeans, method = "silhouette", nboot = 1000)
+
+
+png(file.path("1. Data","Figures","Transient_Sil_Plot.png"), 
     width = 8, height = 6,
     units = "in", res = 600)
-fviz_nbclust(datT2_mig, kmeans, method = "silhouette", nboot = 1000)
+fviz_nbclust(datT2_trns, kmeans, method = "silhouette", nboot = 1000)
 dev.off()
 
 png(file.path("1. Data","Figures","Resident_Sil_Plot.png"), 
@@ -193,14 +209,14 @@ dev.off()
 
 
 ### Gap Statistic ----------------------------------------------------------
-gap_stat_mig <- cluster::clusGap(datT2_mig, FUN = kmeans, nstart = 25,
+gap_stat_trns <- cluster::clusGap(datT2_trns, FUN = kmeans, nstart = 25,
                              K.max = 10, B = 300)
 gap_stat_res <- cluster::clusGap(datT2_res, FUN = kmeans, nstart = 25,
                                  K.max = 10, B = 300)
 
-png(file.path("1. Data","Figures","Migrant_GapStat_Plot.png"), 
+png(file.path("1. Data","Figures","Transient_GapStat_Plot.png"), 
     width = 8, height = 6, units = "in", res = 300)
-fviz_gap_stat(gap_stat_mig)
+fviz_gap_stat(gap_stat_trns)
 dev.off()
 
 png(file.path("1. Data","Figures","Resident_GapStat_Plot.png"), 
@@ -209,22 +225,22 @@ fviz_gap_stat(gap_stat_res)
 dev.off()
 
 # Perform Clustering #######################################################
-# 3 to 5 clusters has relatively good support:
-# Dendrogram: 3 or 4
-# WSS Plot: 3 to 5
-# Silhouette Plot: 5
+# 2 clusters each has relatively good support:
+# Dendrogram: 2 for Transients, 2 - 3 for residents
+# WSS Plot: NA
+# Silhouette Plot: 2 for both
 # Gap Statistic: 10 (lots of overlaps)
 
 # K-means Cluster with k=3 
-kmeans_mig <- eclust(datT2_mig, "kmeans", k = 2, nstart = 25, nboot = 10000, 
+kmeans_trns <- eclust(datT2_trns, "kmeans", k = 2, nstart = 25, nboot = 10000, 
                  verbose = TRUE)
-kmeans_res <- eclust(datT2_res, "kmeans", k = 3, nstart = 25, nboot = 10000, 
+kmeans_res <- eclust(datT2_res, "kmeans", k = 2, nstart = 25, nboot = 10000, 
                      verbose = TRUE)
 
-png(file.path("1. Data","Figures","Migrant_ClusterOutput.png"), 
+png(file.path("1. Data","Figures","Transient_ClusterOutput.png"), 
     width = 8, height = 6,
     units = "in", res = 600)
-fviz_cluster(kmeans_mig, stand = FALSE, geom = "point", axes = c(1,2))+
+fviz_cluster(kmeans_trns, stand = FALSE, geom = "point", axes = c(1,2))+
   theme_classic()
 dev.off()
 
@@ -235,9 +251,9 @@ fviz_cluster(kmeans_res, stand = FALSE, geom = "point", axes = c(1,2))+
   theme_classic()
 dev.off()
 
-fviz_cluster(kmeans_mig, stand = FALSE, geom = "point", axes = c(1,3))+
+fviz_cluster(kmeans_trns, stand = FALSE, geom = "point", axes = c(1,3))+
   theme_classic() 
-fviz_cluster(kmeans_mig, stand = FALSE, geom = "point", axes = c(1,4))+
+fviz_cluster(kmeans_trns, stand = FALSE, geom = "point", axes = c(1,4))+
   theme_classic() 
 
 fviz_cluster(kmeans_res, stand = FALSE, geom = "point", axes = c(1,3))+
@@ -247,22 +263,28 @@ fviz_cluster(kmeans_res, stand = FALSE, geom = "point", axes = c(1,4))+
 
 
 # Assign the resulting cluster ID to each individual
-cluster_assign_mig <- data.frame("cluster" = factor(kmeans_mig$cluster,
-                                                levels = sort(unique(kmeans_mig$cluster)))) %>%
+cluster_assign_trns <- data.frame("cluster" = factor(kmeans_trns$cluster,
+                                                levels = sort(unique(kmeans_trns$cluster)))) %>%
   rownames_to_column("TagAge") %>%
   mutate(cluster = factor(paste("M",cluster, sep = ""), 
-                          levels = paste("M",sort(unique(kmeans_mig$cluster)),sep ="")))
+                          levels = paste("M",sort(unique(kmeans_trns$cluster)),sep ="")))
 cluster_assign_res <- data.frame("cluster" = factor(kmeans_res$cluster,
                                                     levels = sort(unique(kmeans_res$cluster)))) %>%
   rownames_to_column("TagAge") %>%
   mutate(cluster = factor(paste("R",cluster, sep = ""), 
                           levels = paste("R",sort(unique(kmeans_res$cluster)),sep ="")))
 
-cluster_assign <- bind_rows(cluster_assign_mig,cluster_assign_res)
+cluster_assign <- bind_rows(cluster_assign_trns,cluster_assign_res)
 
-assigned_dat <- dat %>%
+assigned_dat_res <- dat_res %>%
   rownames_to_column("TagAge") %>%
-  left_join(cluster_assign)
+  left_join(cluster_assign_res)
+assigned_dat_trns <- dat_trns %>%
+  rownames_to_column("TagAge") %>%
+  left_join(cluster_assign_trns)
+
+assigned_dat <- bind_rows(assigned_dat_trns, assigned_dat_res) %>%
+  filter(!is.na(cluster))
 
 # library(plotly)
 # p <- plot_ly(assigned_dat, x=~Comp.3, y=~Comp.2, 
@@ -272,11 +294,12 @@ assigned_dat <- dat %>%
 
 # Interpretation ############################################################
 ## PERMANOVA ================================================================
-datT2_assigned <- dat %>%
+datT2_assigned <- assigned_dat %>%
+  select(-cluster, -TagAge) %>%
+  filter(!is.na(AgeBin)) %>%
   decostand(method = "standardize") %>%
-  rownames_to_column("TagAge") %>%
-  left_join(cluster_assign) %>%
-  select(-TagAge)
+  bind_cols(select(assigned_dat %>% filter(!is.na(cluster)), cluster))
+  
 
 permanova <- vegan::adonis2(datT2_assigned[,1:(length(datT2_assigned)-2)] ~ cluster, 
                             data = datT2_assigned,
@@ -298,10 +321,10 @@ b.sig = 0.05/length(dat)
 anova<-aov(cbind(AgeBin, inside_sites_total, outside_sites_total, 
                  all_sites_total, inside_site_freq, outside_site_freq, 
                  all_site_freq, weekly_receivers_mean, weekly_receivers_max, 
-                 CaptureAgeBin, time_btwn_detects_max, 
+                 time_btwn_detects_max, 
                  time_btwn_detects_mean, time_btwn_mvmts_max, 
                  time_btwn_mvmts_mean, mean_distance, q05_distance, q25_distance, 
-                 q50_distance, q75_distance, q99_distance, emmigrant, 
+                 q50_distance, q75_distance, q99_distance,
                  mean_exit_woy, mean_entry_woy, entry_total, exit_total, all_total, 
                  entry_freq, exit_freq, all_freq, 
                  residence_total_INSIDE, residence_total_OUTSIDE, 
@@ -309,7 +332,7 @@ anova<-aov(cbind(AgeBin, inside_sites_total, outside_sites_total,
                  residence_max_INSIDE, residence_max_OUTSIDE, wyt, 
                  gate_perc_open
 ) ~ cluster, 
-data = assigned_dat)
+data = assigned_dat %>% filter(!is.na(AgeBin)))
 
 # get a summary of anova results
 sum <- summary(anova) # All except q25 are significant
@@ -329,7 +352,6 @@ write.csv(resp_df, file.path("1. Data","Outputs","ANOVA_Response.csv"))
 assigned_dat %>%
   group_by(cluster) %>%
   summarise(count = n(),
-            emmigrant = sum(emmigrant),
             across(where(~is.numeric(.x)), ~mean(.x, na.rm = TRUE))) %>%
   t()
 
@@ -339,25 +361,25 @@ assigned_dat %>%
 #devtools::install_github("o1iv3r/FeatureImpCluster")
 
 # FeatureImpCluster requires input from flexclust so convert
-res_mig <- flexclust::as.kcca(kmeans_mig, data = datT2_mig, k = 2)
+res_trns <- flexclust::as.kcca(kmeans_trns, data = datT2_trns, k = 2)
 res_res <- flexclust::as.kcca(kmeans_res, data = datT2_res, k = 3)
 
 # Get the Feature Importance
 nr_seeds <- 1000
 seeds_vec <- sample(1:10000, nr_seeds)
 
-savedImp_mig <- data.frame(matrix(0,nr_seeds,dim(datT2_mig)[2]))
+savedImp_trns <- data.frame(matrix(0,nr_seeds,dim(datT2_trns)[2]))
 count <- 1
 for (s in seeds_vec) {
   set.seed(s)
-  res <- flexclust::kcca(datT2_mig, k=2)
+  res <- flexclust::kcca(datT2_trns, k=2)
   set.seed(s)
-  FeatureImp_res <- FeatureImpCluster::FeatureImpCluster(res,as.data.table(datT2_mig),
+  FeatureImp_res <- FeatureImpCluster::FeatureImpCluster(res,as.data.table(datT2_trns),
                                                          sub = 1,biter = 1)
-  savedImp_mig[count,] <- FeatureImp_res$featureImp[sort(names(FeatureImp_res$featureImp))]
+  savedImp_trns[count,] <- FeatureImp_res$featureImp[sort(names(FeatureImp_res$featureImp))]
   count <- count + 1
 }
-names(savedImp_mig) <- sort(names(FeatureImp_res$featureImp))
+names(savedImp_trns) <- sort(names(FeatureImp_res$featureImp))
 
 savedImp_res <- data.frame(matrix(0,nr_seeds,dim(datT2_res)[2]))
 count <- 1
@@ -372,11 +394,11 @@ for (s in seeds_vec) {
 }
 names(savedImp_res) <- sort(names(FeatureImp_res$featureImp))
 
-savedImp_mig <- savedImp_mig  %>%
+savedImp_trns <- savedImp_trns  %>%
   pivot_longer(cols = everything(),
                names_to = "variable",
                values_to = "misclassification") %>%
-  mutate(group = "migrant")
+  mutate(group = "Transient")
 
 savedImp_res <- savedImp_res  %>%
   pivot_longer(cols = everything(),
@@ -384,9 +406,9 @@ savedImp_res <- savedImp_res  %>%
                values_to = "misclassification") %>%
   mutate(group = "resident")
 
-savedImp <- bind_rows(savedImp_mig, savedImp_res)
+savedImp <- bind_rows(savedImp_trns, savedImp_res)
 
-mig_imp_plot <- ggplot(savedImp_mig %>%
+trns_imp_plot <- ggplot(savedImp_trns %>%
                          mutate(misclassification = ifelse(misclassification == 0, 0.00001,
                                                            misclassification)) %>%
                          group_by(group, variable) #%>%
@@ -422,7 +444,7 @@ res_imp_plot <- ggplot(savedImp_res %>%
 
 png(file.path("1. Data","Figures","FeatureImportance.png"),
     width = 8, height = 6,  units = "in", res = 600)
-print(gridExtra::grid.arrange(mig_imp_plot, res_imp_plot, nrow = 2))
+print(gridExtra::grid.arrange(trns_imp_plot, res_imp_plot, nrow = 2))
 dev.off()
 
 ## Examine the variables by cluster --------------------------------------
@@ -586,14 +608,14 @@ mean_exit_woy <- ggplot()+
   geom_violin(data= assigned_dat%>%
                 separate(TagAge,into = c("TagID","AgeBin"), sep = "-",
                          extra = "merge") %>%
-                filter(emmigrant == TRUE & exit_total >= 1),
+                filter(exit_total >= 1),
               aes(y = lubridate::ymd("2017-12-31")+(mean_exit_woy*7), x = 1), 
               fill = "grey50",
               trim = TRUE, bw = 7)+
   geom_text(data = assigned_dat%>%
               separate(TagAge,into = c("TagID","AgeBin"), sep = "-",
                        extra = "merge") %>%
-              filter(emmigrant == TRUE & exit_total >= 1) %>%
+              filter(exit_total >= 1) %>%
               select(TagID, mean_exit_woy, cluster) %>%
               distinct() %>%
               group_by(cluster) %>%
@@ -633,14 +655,14 @@ mean_entry_woy <- ggplot()+
   geom_violin(data= assigned_dat%>%
                 separate(TagAge,into = c("TagID","AgeBin"), sep = "-",
                          extra = "merge") %>%
-                filter(emmigrant == TRUE & entry_total >= 1),
+                filter(entry_total >= 1),
               aes(y = lubridate::ymd("2017-12-31")+(mean_entry_woy*7), x = 1), 
               fill = "grey50",
               trim = TRUE, bw = 7)+
   geom_text(data = assigned_dat%>%
               separate(TagAge,into = c("TagID","AgeBin"), sep = "-",
                        extra = "merge") %>%
-              filter(emmigrant == TRUE & entry_total >= 1) %>%
+              filter(entry_total >= 1) %>%
               select(TagID, mean_entry_woy, cluster) %>%
               distinct() %>%
               group_by(cluster) %>%
@@ -834,42 +856,52 @@ ggsave(file.path("1. Data","Figures","Season.png"), device = "png",
 TagBKM_Bin <- readRDS(file.path("1. Data", "Outputs", "TagBKM_Bin.rds"))
 seasons %>%
   select(season,start_doy, end_doy) %>%
-  crossing(year = c(2012:2017)) %>%
-  mutate(start_date = ymd(paste(year,"12","31"))+days(start_doy),
+  crossing(year = c(2013:2018)) %>%
+  mutate(start_date = ymd(paste(year-1,"12","31"))+days(start_doy),
          end_date = as_date(ifelse(start_doy > 300,
-                           ymd(paste(year+2,"1","1")),
-                           ymd(paste(year,"12","31"))+days(end_doy)))) %>%
+                           ymd(paste(year+1,"1","1")),
+                           ymd(paste(year-1,"12","31"))+days(end_doy)))) %>%
   mutate(season_year = paste(season,year,sep = "-")) %>%
   crossing(y = c(0,16)) %>%
-  arrange(start_date)-> all_seasons
+  mutate(season_sub = str_remove(season,"_\\w")) %>%
+  arrange(start_date) %>%
+  mutate(median_date = case_when(
+    end_doy > 1 ~ ymd(paste(year-1,"12-31",sep = "-"))+days(as.integer((start_doy+end_doy)/2)),
+    end_doy == 1 ~ ymd(paste(year-1,"12-31",sep = "-"))+days(as.integer((start_doy+366)/2)))
+    )-> all_seasons
 
-assigned_dat%>%
+assigned_dat %>%
   separate(TagAge,into = c("TagID","AgeBin"), sep = "-",
            extra = "merge") %>%
-  select(TagID, AgeBin, season, cluster) %>%
+  select(TagID, AgeBin, cluster) %>%
   separate("AgeBin", into = c("AgeBin","extra"), sep = "-",
-           extra = "merge") %>%
-  group_by(TagID, AgeBin, season) %>%
-  select(-extra) %>%
+           extra = "merge") %>% 
+  separate("extra", into = c("Age2","season", "year"), sep = "-",
+           extra =) %>%
+  mutate(year = as.numeric(ifelse(is.na(year),season, year))) %>%
+  mutate(season = ifelse(season %in% c(2013:2021), Age2, season)) %>%
+  select(-Age2) %>%
   mutate(AgeBin = case_when(
     AgeBin == "1" ~ "1-2",
     AgeBin == "3" ~ "3-5",
     TRUE ~ "6+"
   )) %>%
-  summarise(cluster_list = list(as.character(cluster)))%>% View()
-  mutate(primary_cluster = getmode(unlist(cluster_list)),
-         secondary_cluster = getmode(unlist(cluster_list)[which(unlist(cluster_list) != primary_cluster)])) %>%
-  mutate(primary_cluster = as.character(primary_cluster),
-         secondary_cluster = as.character(secondary_cluster)) ->tag_clusters
+  rename("season_sub" = season) %>%
+  left_join(all_seasons) %>%
+  select(TagID, AgeBin, cluster, season, year, start_date, median_date, end_date) %>%
+  distinct()-> tag_clusters
 
-for(i in (tag_clusters %>% pull(var = "TagID"))){
+for(i in (tag_clusters %>% pull(var = "TagID") %>% unique())){
   tmp <- TagBKM_Bin %>%
     filter(TagID == i) %>%
     mutate(TagID = as.character(TagID)) %>%
-    left_join(tag_clusters)
+    mutate(year = year(studyweek_startdate(Week))) %>%
+    left_join(tag_clusters) %>%
+    filter(between(last_detect, start_date, end_date)|SiteCode == "Tag Failure")
   
   if(nrow(tmp)>1){
     ggplot()+
+      # Season Background
       geom_ribbon(data = all_seasons %>%
                     mutate(y = ifelse(y == 16, length(unique(tmp$SiteCode))+1, y)),
                   aes(y = y,
@@ -878,18 +910,40 @@ for(i in (tag_clusters %>% pull(var = "TagID"))){
                   fill = season,
                   group = interaction(season,year)),
                   alpha = 0.35)+
+      # Detection History
       geom_point(data = tmp,
                  aes(x = studyweek_startdate(Week), y = SiteCode, group = TagID))+
       geom_step(data = tmp,
                 aes(x = studyweek_startdate(Week), y = SiteCode, group = TagID))+
+      # Tag Failure Line
+      geom_vline(data = tmp %>% filter(SiteCode == "Tag Failure"), 
+                 aes(xintercept = studyweek_startdate(Week)), 
+                 color = "red", linewidth = 1.5)+
+      geom_text(data = tmp %>% filter(SiteCode == "Tag Failure"), 
+                aes(x = studyweek_startdate(Week-3),
+                    y = 2, label = "Detection History End"),
+                angle = 90, color = "red")+
+      # CCF Inside/Outside Separating Line
       geom_hline(yintercept = as.numeric(factor("RGD1",
                                                 levels = levels(tmp$SiteCode))) + 0.5,
                                                 color = "blue", 
-                 linewidth = 2, linetype = "dashed")+
+                 linewidth = 1.5, linetype = "dashed")+
+      # Cluster ID
+      geom_text(data = tmp %>%
+                  ungroup() %>%
+                  select(SiteCode, median_date, cluster) %>%
+                  mutate(SiteCode = max(SiteCode)) %>%
+                  distinct(),
+                aes(x = median_date,
+                    y = SiteCode, label = cluster
+                    ))+
+      # Plot Setup
       scale_x_date(name = "Date",
                    breaks = scales::breaks_pretty(n = 8),
-                   date_labels = "%b-%d")+
-      scale_y_discrete()+
+                   date_labels = "%b-%Y")+
+      scale_y_discrete(breaks = c("Release","IC3","IC2","IC1","RGD1","RGU1",
+                                  "ORS1","WC1","ORN1","WC2","ORN2","GL1","CVP1",
+                                  "WC3","ORS3","CLRS"))+
       scale_fill_manual(name = "Season",
                         breaks = c("Immigration_a","Spawn","Emmigration",
                                    "Residence","Immigration_b"),
@@ -901,10 +955,12 @@ for(i in (tag_clusters %>% pull(var = "TagID"))){
       theme(panel.spacing = unit(0, "lines"),
             axis.text.x = element_text(angle = -45, hjust = 0),
             axis.title.y = element_blank())+
-      labs(subtitle = paste("Primary Cluster:",tmp$primary_cluster[1]))+
+      labs(subtitle = paste("Tag ID:",tmp$TagID[1]))+
       coord_cartesian(xlim = c(studyweek_startdate(min(tmp$Week)-1),
-                               studyweek_startdate(max(tmp$Week)+1)))
-    ggsave(file.path("1. Data","Figures","DetectionPlots",paste(tmp$TagID[1],tmp$primary_cluster[1],"ex.png",sep = "-")),
+                               studyweek_startdate(max(tmp$Week)+1)),
+                      #ylim = c(1,16)
+                      )
+    ggsave(file.path("1. Data","Figures","DetectionPlots",paste(tmp$TagID[1],"DetectionHistory.png",sep = "-")),
            device = "png", width = 10, height = 5, dpi = 600)
   } else {
     print("Tag not in cluster")
