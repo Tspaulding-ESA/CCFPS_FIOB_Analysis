@@ -204,13 +204,12 @@ season_week_split %>%
   mutate(year = year(.start)) %>%
   group_by(TagID) %>%
   mutate(first_year = min(year),
-         first_date = min(.start)) %>%
+         first_season = season[which(.start == min(.start))]) %>%
   group_by(year, TagID) %>%
-  mutate(season_duration = ifelse(year == first_year & .start == first_date,
+  mutate(season_duration = ifelse(year == first_year & season == first_season,
                                   ceiling((end-yday(.start))/7),
-                                  end-start)) %>%
-  filter(!(move_direction %in% c("New Tag","NOT TRANSIT","UNRESOLVED TRANSIT", 
-                                 "PARTIAL TRANSIT"))) %>%
+                                  season_duration)) %>%
+  filter(!(move_direction %in% c("New Tag","NOT TRANSIT","UNRESOLVED TRANSIT"))) %>%
   group_by(year, TagID, AgeBin, season) %>%
   mutate(season_duration = max(season_duration)) %>%
   distinct(TagID, AgeBin, season, season_duration, move_direction) %>%
