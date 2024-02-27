@@ -220,15 +220,13 @@ season_week_split %>%
   pivot_wider(names_from = "move_direction",values_from = "count", values_fill = 0) %>%
   mutate(
     entries = case_when(
-      `ENTRY AND EXIT x 2` == 4 ~ ENTRY + 2,
       `ENTRY AND EXIT` == 2 ~ ENTRY + 1,
       TRUE ~ ENTRY),
     exits = case_when(
-      `ENTRY AND EXIT x 2` == 4 ~ EXIT + 2,
       `ENTRY AND EXIT` == 2 ~ EXIT + 1,
       TRUE ~ EXIT),
     total_mvmts = entries+exits) %>%
-  select(-c(ENTRY,EXIT,`ENTRY AND EXIT`,`ENTRY AND EXIT x 2`)) %>%
+  select(-c(ENTRY,EXIT,`ENTRY AND EXIT`)) %>%
   ungroup() %>%
   group_by(TagID, AgeBin, year, season) %>%
   summarise(entry_total = sum(entries),

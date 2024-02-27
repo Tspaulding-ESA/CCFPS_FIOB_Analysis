@@ -13,23 +13,24 @@ set.seed(123)
 ## Formatting ==============================================================
 dat_trns <- dat %>% 
   filter(residence_total_OUTSIDE > 0 |
-           outside_sites_total > 0)
+           outside_sites_total > 0|
+           all_total > 0)
 
 datT1_trns <- dat_trns %>%
   decostand(method = "standardize") %>% 
-  select(-emmigrant) %>%
   filter(!is.na(AgeBin))
 
 dat_res <- dat %>% 
   filter(residence_total_OUTSIDE == 0 &
-           outside_sites_total == 0) 
+           outside_sites_total == 0 &
+           all_total == 0) 
 
 datT1_res <- dat_res %>%
   decostand(method = "standardize") %>%
-  select(-emmigrant, -outside_sites_total, -outside_site_freq, -exit_total, 
+  select(-outside_sites_total, -outside_site_freq, -exit_total, 
          -exit_freq, -entry_total, -entry_freq, -all_total, -all_freq,
          -residence_max_OUTSIDE, -residence_mean_OUTSIDE, -residence_total_OUTSIDE,
-         -mean_exit_woy, -mean_entry_woy)%>%
+         -mean_exit_woy, -mean_entry_woy, -time_btwn_mvmts_mean, -time_btwn_mvmts_max)%>%
   filter(!is.na(AgeBin))
 # Exploration ==============================================================
 
@@ -68,13 +69,12 @@ corr_res <- corr_res %>%
   arrange(desc(corr))
 View(corr_res)
 
-# Remove Variables with >95% correlation (same variable only)
+# Remove Variables with 99% correlation (same variable only)
 datT2_trns <- datT1_trns %>%
-  select(-time_btwn_mvmts_max, -residence_max_OUTSIDE,
-         )
+  select(-time_btwn_detects_max, -time_btwn_mvmts_max)
 datT2_res <- datT1_res %>%
-  select(-time_btwn_detects_max, -time_btwn_mvmts_max,
-         all_site_freq, all_sites_total, )
+  select(-time_btwn_detects_max, residence_total_INSIDE, residence_max_INSIDE,
+         all_site_freq, all_sites_total)
 
 ## Principal Components ====================================================
 fit_trns <- prcomp(datT2_trns)
@@ -214,6 +214,10 @@ gap_stat_trns <- cluster::clusGap(datT2_trns, FUN = kmeans, nstart = 25,
 gap_stat_res <- cluster::clusGap(datT2_res, FUN = kmeans, nstart = 25,
                                  K.max = 10, B = 300)
 
+fviz_gap_stat(gap_stat_trns)
+fviz_gap_stat(gap_stat_res)
+
+
 png(file.path("1. Data","Figures","Transient_GapStat_Plot.png"), 
     width = 8, height = 6, units = "in", res = 300)
 fviz_gap_stat(gap_stat_trns)
@@ -225,11 +229,11 @@ fviz_gap_stat(gap_stat_res)
 dev.off()
 
 # Perform Clustering #######################################################
-# 2 clusters each has relatively good support:
-# Dendrogram: 2 for Transients, 2 - 3 for residents
-# WSS Plot: NA
-# Silhouette Plot: 2 for both
-# Gap Statistic: 10 (lots of overlaps)
+# Cluster support: 2 for Transients, 2+ for residents
+# Dendrogram: 2-3 for Transients, 2 - 3 for residents
+# WSS Plot: 5 for Transients, 3 for residents
+# Silhouette Plot: 2-3 for Transients, 3+ for residents
+# Gap Statistic: 10 for transients, 3 for residents
 
 # K-means Cluster with k=3 
 kmeans_trns <- eclust(datT2_trns, "kmeans", k = 2, nstart = 25, nboot = 10000, 
@@ -262,7 +266,7 @@ fviz_cluster(kmeans_res, stand = FALSE, geom = "point", axes = c(1,4))+
   theme_classic() 
 
 
-# Assign the resulting cluster ID to each individual
+# Assign the resulting cluster ID to each 
 cluster_assign_trns <- data.frame("cluster" = factor(kmeans_trns$cluster,
                                                 levels = sort(unique(kmeans_trns$cluster)))) %>%
   rownames_to_column("TagAge") %>%
@@ -314,39 +318,66 @@ pairwise <- pairwise.adonis2(resp = vegdist(datT2_assigned[,1:(length(datT2_assi
 
 pairwise$p.value
 
-## ANOVA ==================================================================
-# Run anova on all the variables, all vars should be significant
+## Kruskal-Wallis ==================================================================
+# Run test on all the variables, all vars should be significant
 
-b.sig = 0.05/length(dat)
-anova<-aov(cbind(AgeBin, inside_sites_total, outside_sites_total, 
-                 all_sites_total, inside_site_freq, outside_site_freq, 
-                 all_site_freq, weekly_receivers_mean, weekly_receivers_max, 
-                 time_btwn_detects_max, 
-                 time_btwn_detects_mean, time_btwn_mvmts_max, 
-                 time_btwn_mvmts_mean, mean_distance, q05_distance, q25_distance, 
-                 q50_distance, q75_distance, q99_distance,
-                 mean_exit_woy, mean_entry_woy, entry_total, exit_total, all_total, 
-                 entry_freq, exit_freq, all_freq, 
-                 residence_total_INSIDE, residence_total_OUTSIDE, 
-                 residence_mean_INSIDE, residence_mean_OUTSIDE, 
-                 residence_max_INSIDE, residence_max_OUTSIDE, wyt, 
-                 gate_perc_open
-) ~ cluster, 
-data = assigned_dat %>% filter(!is.na(AgeBin)))
-
-# get a summary of anova results
-sum <- summary(anova) # All except q25 are significant
+kw_list <- list()
+for(i in c("inside_sites_total", "outside_sites_total", 
+           "all_sites_total", "inside_site_freq", 
+           "outside_site_freq", "all_site_freq", 
+           "weekly_receivers_mean", "weekly_receivers_max", 
+           "time_btwn_detects_max", "time_btwn_detects_mean", 
+           "time_btwn_mvmts_max", "time_btwn_mvmts_mean", 
+           "mean_distance", "q05_distance", "q25_distance", 
+           "q50_distance", "q75_distance", "q99_distance",
+           "mean_exit_woy", "mean_entry_woy", "entry_total", 
+           "exit_total", "all_total", "entry_freq", "exit_freq", 
+           "all_freq", "residence_total_INSIDE", 
+           "residence_total_OUTSIDE", "residence_mean_INSIDE", 
+           "residence_mean_OUTSIDE", "residence_max_INSIDE", 
+           "residence_max_OUTSIDE", "wyt", "gate_perc_open")){
+  kw_list[[i]] <- kruskal.test(as.formula(paste(i,"~ cluster")), data = datT2_assigned)
+}
 
 resp_df <- data.frame()
-for(i in 1:length(sum)){
-  response = stringr::str_split(names(sum[i])," ")[[1]][3]
-  tmp <- sum[[i]][1,]
-  tmp$response <- response
-  resp_df[i,1:6] <- tmp[1,1:6]
+for(i in names(kw_list)){
+  response = i
+  tmp <- kw_list[[i]]
+  chi_sq = tmp$statistic[1]
+  df = tmp$parameter[1]
+  p_value = tmp$p.value[1]
+  df <- data.frame(response, chi_sq,df,p_value)
+  resp_df <- bind_rows(resp_df,df)
 }
-(resp_df <- resp_df %>% select(response, Df:`Pr(>F)`) %>% arrange(`Pr(>F)`) %>%
-    mutate(`Pr(>F)` = round(`Pr(>F)`,4)))
-write.csv(resp_df, file.path("1. Data","Outputs","ANOVA_Response.csv"))
+(resp_df <- resp_df %>% arrange(p_value) %>%
+    mutate(p_value = round(p_value,6)) %>%
+    remove_rownames())
+write.csv(resp_df, file.path("1. Data","Outputs","KW_Response.csv"),
+          row.names = FALSE)
+
+dunn_list <- list()
+for(i in c("inside_sites_total", "outside_sites_total", 
+           "all_sites_total", "inside_site_freq", 
+           "outside_site_freq", "all_site_freq", 
+           "weekly_receivers_mean", "weekly_receivers_max", 
+           "time_btwn_detects_max", "time_btwn_detects_mean", 
+           "time_btwn_mvmts_max", "time_btwn_mvmts_mean", 
+           "mean_distance", "q05_distance", "q25_distance", 
+           "q50_distance", "q75_distance", "q99_distance",
+           "mean_exit_woy", "mean_entry_woy", "entry_total", 
+           "exit_total", "all_total", "entry_freq", "exit_freq", 
+           "all_freq", "residence_total_INSIDE", 
+           "residence_total_OUTSIDE", "residence_mean_INSIDE", 
+           "residence_mean_OUTSIDE", "residence_max_INSIDE", 
+           "residence_max_OUTSIDE", "wyt", "gate_perc_open")){
+  dunn_list[[i]] <-rstatix::dunn_test(as.formula(paste(i,"~ cluster")), data = datT2_assigned,
+                             p.adjust.method = "bonferroni")
+}
+dunn_test <- bind_rows(dunn_list) %>%
+  select(`.y.`,group1, group2, p.adj) %>%
+  pivot_wider(names_from = group2, values_from = p.adj)
+write.csv(dunn_test,file.path("1. Data","Outputs","Dunn_Test.csv"), 
+          row.names = FALSE)
 
 # View the means of each variable for each cluster
 assigned_dat %>%
@@ -398,7 +429,7 @@ savedImp_trns <- savedImp_trns  %>%
   pivot_longer(cols = everything(),
                names_to = "variable",
                values_to = "misclassification") %>%
-  mutate(group = "Transient")
+  mutate(group = "transient")
 
 savedImp_res <- savedImp_res  %>%
   pivot_longer(cols = everything(),
@@ -406,39 +437,35 @@ savedImp_res <- savedImp_res  %>%
                values_to = "misclassification") %>%
   mutate(group = "resident")
 
-savedImp <- bind_rows(savedImp_trns, savedImp_res)
+savedImp <- bind_rows(savedImp_trns, savedImp_res) %>%
+  group_by(group, variable) %>%
+  mutate(median_imp = median(misclassification)) %>%
+  arrange(group, desc(median_imp))
 
-trns_imp_plot <- ggplot(savedImp_trns %>%
-                         mutate(misclassification = ifelse(misclassification == 0, 0.00001,
-                                                           misclassification)) %>%
-                         group_by(group, variable) #%>%
-                       #mutate(mean_importance = mean(importance))
-                       , 
-                       aes(x = reorder(variable, misclassification, decreasing = TRUE), 
-                           y = misclassification, group = interaction(group, variable)))+
-  geom_boxplot(outlier.shape = NA)+
-  geom_smooth()+
-  facet_grid(group ~ ., scales = "free")+
+trns_imp_plot <- ggplot(savedImp %>%
+                          filter(group == "transient"))+
+  geom_boxplot(aes(x = reorder(variable, median_imp, descending = TRUE),
+                   y = misclassification,
+                   group = variable),
+               outlier.shape = NA)+
   theme_classic()+
   theme(
-    axis.text.x = element_text(angle = -45, hjust = 0)
+    axis.text.x = element_text(angle = -45, hjust = 0),
+    plot.margin = unit(c(0,5,0,0),"lines")
   )+
   labs(x = "", y = "Rate of Misclassification")
 
-res_imp_plot <- ggplot(savedImp_res %>%
-         mutate(misclassification = ifelse(misclassification == 0, 0.00001,
-                                           misclassification)) %>%
-         group_by(group, variable) #%>%
-       #mutate(mean_importance = mean(importance))
-       , 
-       aes(x = reorder(variable, misclassification, decreasing = TRUE), 
-           y = misclassification, group = interaction(group, variable)))+
-  geom_boxplot(outlier.shape = NA)+
-  geom_smooth()+
-  facet_grid(group ~ ., scales = "free")+
+res_imp_plot <- ggplot(savedImp %>%
+                         filter(group == "resident"))+
+  geom_boxplot(aes(x = reorder(variable, median_imp, descending = TRUE),
+                   y = misclassification,
+                   group = variable),
+               outlier.shape = NA)+
+  scale_y_continuous(limits = c(0, 0.03))+
   theme_classic()+
   theme(
-    axis.text.x = element_text(angle = -45, hjust = 0)
+    axis.text.x = element_text(angle = -45, hjust = 0),
+    plot.margin = unit(c(0,5,0,0),"lines")
   )+
   labs(x = "", y = "Rate of Misclassification")
 
@@ -460,7 +487,8 @@ residency <- ggplot(assigned_dat %>%
                         grepl("mean", stat) ~ "Average",
                         grepl("max", stat) ~ "Maximum",
                         TRUE ~ "Total")))+
-  geom_boxplot(aes(x = Statistic, y = value, color = location),
+  geom_boxplot(aes(x = Statistic, y = value, color = location,
+                   group = interaction(cluster, Statistic, location)),
                linewidth = 0.75, fill = "grey75")+
   facet_grid(cluster ~ .)+
   scale_color_discrete(name = "Residency Location",
@@ -615,7 +643,7 @@ mean_exit_woy <- ggplot()+
   geom_text(data = assigned_dat%>%
               separate(TagAge,into = c("TagID","AgeBin"), sep = "-",
                        extra = "merge") %>%
-              filter(exit_total >= 1) %>%
+              filter(mean_exit_woy > 1) %>%
               select(TagID, mean_exit_woy, cluster) %>%
               distinct() %>%
               group_by(cluster) %>%
@@ -655,14 +683,14 @@ mean_entry_woy <- ggplot()+
   geom_violin(data= assigned_dat%>%
                 separate(TagAge,into = c("TagID","AgeBin"), sep = "-",
                          extra = "merge") %>%
-                filter(entry_total >= 1),
+                filter(mean_entry_woy > 1 & cluster %in% c("M1","M2")),
               aes(y = lubridate::ymd("2017-12-31")+(mean_entry_woy*7), x = 1), 
               fill = "grey50",
               trim = TRUE, bw = 7)+
   geom_text(data = assigned_dat%>%
               separate(TagAge,into = c("TagID","AgeBin"), sep = "-",
                        extra = "merge") %>%
-              filter(entry_total >= 1) %>%
+              filter(mean_entry_woy > 1 & cluster %in% c("M1","M2")) %>%
               select(TagID, mean_entry_woy, cluster) %>%
               distinct() %>%
               group_by(cluster) %>%
@@ -694,6 +722,7 @@ ggsave(file.path("1. Data","Figures","EntryWeek.png"), device = "png",
 ### Time between Detects Plot ---------------------------------------------
 time_detect_plot <- ggplot(assigned_dat %>%
                              select(cluster,TagAge,time_btwn_detects_mean:time_btwn_detects_max) %>%
+                             filter(time_btwn_detects_mean <100 | time_btwn_detects_max < 100) %>%
                              pivot_longer(cols = time_btwn_detects_mean:time_btwn_detects_max,
                                           names_to = "Statistic",
                                           values_to = "value"))+
@@ -702,9 +731,9 @@ time_detect_plot <- ggplot(assigned_dat %>%
   geom_text(
     aes(label = paste(after_stat(count/2),"Detections"),
         x = 2,
-        y = after_stat(100)),
+        y = after_stat(17)),
     stat = "count",
-    #position = position_nudge(x = -7, y = )
+    position = position_nudge(y = -2)
   )+
   facet_grid(cluster ~ ., scales = 'free_y')+
   coord_flip()+
@@ -714,6 +743,7 @@ time_detect_plot <- ggplot(assigned_dat %>%
                    labels = c("Mean","Max"))+
   scale_color_discrete(breaks = c("time_btwn_detects_mean","time_btwn_detects_max"),
                        labels = c("Mean","Max"))+
+  lims(y = c(0,16))+
   labs(x = "", y = "Weeks between Detections")
 time_detect_plot
 ggsave(file.path("1. Data","Figures","TimeBtwnDetects.png"), device = "png",
@@ -733,7 +763,7 @@ time_move_plot <- ggplot(assigned_dat %>%
   geom_text(
     aes(label = paste(after_stat(count/2),"Movements"),
         x = 2,
-        y = after_stat(70)),
+        y = after_stat(15)),
     stat = "count",
     #position = position_nudge(x = -7, y = )
   )+
@@ -747,7 +777,8 @@ time_move_plot <- ggplot(assigned_dat %>%
   scale_color_discrete(breaks = c("time_btwn_mvmts_mean",
                                   "time_btwn_mvmts_max"),
                        labels = c("Mean", "Max"))+
-  labs(x = "", y = "Weeks between Transits")
+  labs(x = "", y = "Weeks between Transits")+
+  lims(y = c(0,16))
 time_move_plot
 ggsave(file.path("1. Data","Figures","TimeBtwnMovements.png"), device = "png",
        width = 8, height = 6,        units = "in",dpi = 600)
@@ -790,8 +821,6 @@ wyt_weights <- data.frame(year = c(2013,2014,2015,2016,2017,2018)) %>%
   mutate(wyt = factor(wyt, levels =  c("Critical","Dry","Below Normal","Above Normal",
                                        "Wet")))
   
-
-
 wyt_plot <- ggplot(assigned_dat %>%
                      select(cluster, wyt) %>%
                      mutate(wyt = factor(wyt, levels = c(1:5),
@@ -822,16 +851,16 @@ season_weights <- seasons %>%
   distinct(season, start,end) %>%
   mutate(duration = (end-start)/7) %>%
   group_by(season) %>%
-  summarise(weight = round(sum(duration),0))
+  summarise(weight = as.numeric(round(sum(duration),0)))
 
 season_plot <- ggplot(assigned_dat %>%
                         group_by(cluster,season) %>%
                         tally(name = "count") %>%
                         mutate(season = factor(season,
-                                               levels = c(1:4),
-                                               labels = c("Immigration","Spawn",
+                                               levels = c(1:5),
+                                               labels = c("Immigration_a","Spawn",
                                                           "Emmigration",
-                                                          "Residence"))) %>%
+                                                          "Residence","Immigration_b"))) %>%
                         left_join(season_weights) %>%
                         mutate(adj_count = count/weight)
 )+
@@ -840,7 +869,7 @@ season_plot <- ggplot(assigned_dat %>%
   facet_grid(cluster ~ .)+
   coord_flip()+
   scale_fill_discrete(name = "season", 
-                      breaks = c("Immigration","Spawn","Emmigration","Residence"))+
+                      breaks = c("Immigration_a","Spawn","Emmigration","Residence","Immigration_b"))+
   theme_classic()+
   theme(axis.text.x = element_text(angle = -45, hjust = 0),
         axis.text.y = element_blank(),
@@ -854,6 +883,14 @@ ggsave(file.path("1. Data","Figures","Season.png"), device = "png",
 
 ### Detection Histories ----------------------------------------------------
 TagBKM_Bin <- readRDS(file.path("1. Data", "Outputs", "TagBKM_Bin.rds"))
+
+seasons <- data.frame(
+  season = c("Immigration_a","Spawn","Emmigration","Residence","Immigration_b"),
+  start =  c(ymd("2018-01-01"),ymd("2018-03-15"),ymd("2018-05-15"),ymd("2018-08-01"), ymd("2018-11-01")),
+  end = c(ymd("2018_03-15"),ymd("2018-05-15"),ymd("2018-08-01"),ymd("2018-11-01"),ymd("2019-01-01"))) %>%
+  mutate(start_doy = yday(start),
+         end_doy = yday(end),)
+
 seasons %>%
   select(season,start_doy, end_doy) %>%
   crossing(year = c(2013:2018)) %>%
@@ -886,15 +923,20 @@ assigned_dat %>%
     AgeBin == "3" ~ "3-5",
     TRUE ~ "6+"
   )) %>%
-  rename("season_sub" = season) %>%
   left_join(all_seasons) %>%
   select(TagID, AgeBin, cluster, season, year, start_date, median_date, end_date) %>%
   distinct()-> tag_clusters
 
 for(i in (tag_clusters %>% pull(var = "TagID") %>% unique())){
   tmp <- TagBKM_Bin %>%
-    filter(TagID == i) %>%
     mutate(TagID = as.character(TagID)) %>%
+    select(TagID,Week,SiteCode,last_detect) %>%
+    filter(TagID == i) %>%
+    full_join(select(season_week_split %>% 
+                       mutate(TagID = as.character(TagID)) %>%
+                       filter(TagID == i),
+                     TagID, Week))%>%
+    arrange(Week, SiteCode) %>%
     mutate(year = year(studyweek_startdate(Week))) %>%
     left_join(tag_clusters) %>%
     filter(between(last_detect, start_date, end_date)|SiteCode == "Tag Failure")

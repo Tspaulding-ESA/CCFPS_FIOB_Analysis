@@ -160,9 +160,9 @@ dev.off()
 
 # Check a tag
 ggplot()+
-  geom_point(data = TagBKM_Bin[TagBKM_Bin$TagID %in% c(6012.24),], 
+  geom_point(data = TagBKM_Bin[TagBKM_Bin$TagID %in% c(5004.24),], 
              aes(x = Week, y = SiteCode, group = TagID))+
-  geom_step(data = TagBKM_Bin[TagBKM_Bin$TagID %in% c(6012.24),], 
+  geom_step(data = TagBKM_Bin[TagBKM_Bin$TagID %in% c(5004.24),], 
             aes(x = Week, y = SiteCode, group = TagID))+
   scale_y_discrete()+
   theme(panel.spacing = unit(0, "lines"))+
@@ -350,6 +350,17 @@ png(file = file.path("1. Data", "Figures","ExampleTagDetection.png"),
   labs(x = "Date", y = "Site")+
   theme_classic())
 dev.off()
+
+# Check a tag
+ggplot()+
+  geom_point(data = TagBKM_Bin[TagBKM_Bin$TagID %in% c(5004.24),], 
+             aes(x = Week, y = SiteCode, group = TagID))+
+  geom_step(data = TagBKM_Bin[TagBKM_Bin$TagID %in% c(5004.24),], 
+            aes(x = Week, y = SiteCode, group = TagID))+
+  scale_y_discrete()+
+  theme(panel.spacing = unit(0, "lines"))+
+  facet_grid(TagID ~.)
+
 
 ## Redo weekly detection histories including tag failures =================
 # Determine how many and which sites a tag visited on a single week
