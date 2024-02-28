@@ -411,6 +411,25 @@ TotalSiteVisitSummary <- WeeklySiteVisit %>%
 no_detect_tags <- ReleasedTags[!(ReleasedTags %in% DetectedTags)]
 saveRDS(no_detect_tags,file.path("1. Data","Outputs","no_detect_tags.rds"))
 
+# Is there a difference between Detected and undetected fish?
+release %>%
+  filter(Species == "Striped Bass") %>%
+  select(TagID, Length_cm, WT_lbs, CapturedLocationID) %>%
+  mutate(detected = case_when(
+    TagID %in% no_detect_tags ~ FALSE,
+    TRUE ~ TRUE
+  )) ->ttest
+
+ttest_list <-list()
+for(i in names(ttest[,2:(length(ttest)-1)])){
+  test <- t.test(formula = as.formula(paste(i,"~ detected")),
+         data = ttest, 
+         na.action = na.omit)
+  ttest_list[[i]] <- test
+}
+
+
+
 # Remove Fish with no detections
 WeeklySiteVisit <- WeeklySiteVisit %>%
 filter(!(TagID %in% no_detect_tags)) 
