@@ -76,170 +76,32 @@ datT2_res <- datT1_res %>%
   select(-time_btwn_detects_max, residence_total_INSIDE, residence_max_INSIDE,
          all_site_freq, all_sites_total)
 
-## Principal Components ====================================================
-fit_trns <- prcomp(datT2_trns)
-fit_res <- prcomp(datT2_res)
-
-summary(fit_trns) # print variance accounted for
-summary(fit_res) # print variance accounted for
-
-
-plot(fit_trns, type="lines") # scree plot
-plot(fit_res,type="lines") # scree plot
-
-biplot(fit_trns, cex = c(0.1,.75), scale = 1) #PCA Biplot
-biplot(fit_res, cex = c(0.1,.75), scale = 1) #PCA Biplot
-
-png(file.path("1. Data","Figures","Transient_PCA_biplot.png"), width = 10, height = 10,
-    units = "in", res = 600)
-biplot(fit_trns, cex = c(0.1,.75), scale = 1, main = "Transient") #PCA Biplot
-dev.off()
-
-png(file.path("1. Data","Figures","Resident_PCA_biplot.png"), width = 10, height = 10,
-    units = "in", res = 600)
-biplot(fit_res, cex = c(0.1,.75), scale = 1, main = "Resident") #PCA Biplot
-dev.off()
-
-## Dendogram ===============================================================
-datEuc_trns <- vegdist(datT2_trns, method = "euclidean", na.rm = TRUE)
-datEuc_res <- vegdist(datT2_res, method = "euclidean", na.rm = TRUE)
-
-euc_agnes_trns <- cluster::agnes(datEuc_trns, method = "ward")
-euc_agnes_res <- cluster::agnes(datEuc_res, method = "ward")
-
-
-labelCol_season <- function(x) {
-  if (is.leaf(x)) {
-    ## fetch label
-    label <- attr(x, "label") 
-    ## set label color to red for A and B, to blue otherwise
-    attr(x, "nodePar") <- list(lab.col=case_when(grepl("Spawn",label) ~ "orange",
-                                                 grepl("Immigration",label) ~ "forestgreen",
-                                                 grepl("Residence",label) ~ "plum",
-                                                 grepl("Emmigration", label) ~ "steelblue"),
-                               lab.cex = 0.2,
-                               cex = NA, pch = NA)
-  }
-  return(x)
-}
-
-labelCol_age <- function(x) {
-  if (is.leaf(x)) {
-    ## fetch label
-    label <- attr(x, "label") 
-    ## set label color to red for A and B, to blue otherwise
-    attr(x, "nodePar") <- list(lab.col=case_when(grepl("1-2",label) ~ "orange",
-                                                 grepl("3-5",label) ~ "forestgreen",
-                                                 grepl("6+", label) ~ "steelblue"),
-                               lab.cex = 0.2,
-                               cex = NA, pch = NA)
-  }
-  return(x)
-}
-
-dg_trns <- as.dendrogram(euc_agnes_trns)
-dg_trns <- dendextend::remove_nodes_nodePar(dg_trns)
-dg_trns_season <- dendrapply(dg_trns, labelCol_season)
-dg_trns_age <- dendrapply(dg_trns, labelCol_age)
-
-dg_res <- as.dendrogram(euc_agnes_res)
-dg_res <- dendextend::remove_nodes_nodePar(dg_res)
-dg_res_season <- dendrapply(dg_res, labelCol_season)
-dg_res_age <- dendrapply(dg_res, labelCol_age)
-
-plot(dg_trns_age)
-plot(dg_res_age)
-
-png(file.path("1. Data","Figures","Transient_Dendrogram.png"), 
-    width = 12, height = 6,
-    units = "in", res = 600)
-par(mar = c(0.1,3,0.1,0.11))
-plot(dg_trns_age)
-#dendextend::rect.dendrogram(dg, k = 5)
-#abline(h=5, col="blue", lwd = 2)
-#abline(h=4, col="green", lwd = 2)
-dev.off()
-
-png(file.path("1. Data","Figures","Resident_Dendrogram.png"), 
-    width = 12, height = 6,
-    units = "in", res = 600)
-par(mar = c(0.1,3,0.1,0.11))
-plot(dg_res_age)
-#dendextend::rect.dendrogram(dg, k = 5)
-#abline(h=5, col="blue", lwd = 2)
-#abline(h=4, col="green", lwd = 2)
-dev.off()
-
-## Identify Potential Clusters =============================================
-
-### WSS Plot ---------------------------------------------------------------
-# Want to look for the bend in the curve
-fviz_nbclust(datT2_trns, kmeans, method = "wss", nboot = 1000)
-fviz_nbclust(datT2_res, kmeans, method = "wss", nboot = 1000)
-
-png(file.path("1. Data","Figures","Transient_WSS_Plot.png"), 
-    width = 8, height = 6,
-    units = "in", res = 600)
-fviz_nbclust(datT2_trns, kmeans, method = "wss", nboot = 1000)
-dev.off ()
-
-png(file.path("1. Data","Figures","Resident_WSS_Plot.png"), 
-    width = 8, height = 6,
-    units = "in", res = 600)
-fviz_nbclust(datT2_res, kmeans, method = "wss", nboot = 1000)
-dev.off ()
-
-### Silhouette Plot --------------------------------------------------------
-# Want to get the highest mean sihouette 
-fviz_nbclust(datT2_trns, kmeans, method = "silhouette", nboot = 1000)
-fviz_nbclust(datT2_res, kmeans, method = "silhouette", nboot = 1000)
-
-
-png(file.path("1. Data","Figures","Transient_Sil_Plot.png"), 
-    width = 8, height = 6,
-    units = "in", res = 600)
-fviz_nbclust(datT2_trns, kmeans, method = "silhouette", nboot = 1000)
-dev.off()
-
-png(file.path("1. Data","Figures","Resident_Sil_Plot.png"), 
-    width = 8, height = 6,
-    units = "in", res = 600)
-fviz_nbclust(datT2_res, kmeans, method = "silhouette", nboot = 1000)
-dev.off()
-
-
-### Gap Statistic ----------------------------------------------------------
-gap_stat_trns <- cluster::clusGap(datT2_trns, FUN = kmeans, nstart = 25,
-                             K.max = 10, B = 300)
-gap_stat_res <- cluster::clusGap(datT2_res, FUN = kmeans, nstart = 25,
-                                 K.max = 10, B = 300)
-
-fviz_gap_stat(gap_stat_trns)
-fviz_gap_stat(gap_stat_res)
-
-
-png(file.path("1. Data","Figures","Transient_GapStat_Plot.png"), 
-    width = 8, height = 6, units = "in", res = 300)
-fviz_gap_stat(gap_stat_trns)
-dev.off()
-
-png(file.path("1. Data","Figures","Resident_GapStat_Plot.png"), 
-    width = 8, height = 6, units = "in", res = 300)
-fviz_gap_stat(gap_stat_res)
-dev.off()
-
 # Perform Clustering #######################################################
-# Cluster support: 2 for Transients, 2+ for residents
-# Dendrogram: 2-3 for Transients, 2 - 3 for residents
-# WSS Plot: 5 for Transients, 3 for residents
-# Silhouette Plot: 2-3 for Transients, 3+ for residents
-# Gap Statistic: 10 for transients, 3 for residents
+# K-means Clustering using gap statistic to identify optimal clusters
+kmeans_trns <- eclust(datT2_trns, "kmeans", nboot = 100, verbose = TRUE)
+kmeans_res <- eclust(datT2_res, "kmeans", nboot = 100, verbose = TRUE)
 
-# K-means Cluster with k=3 
-kmeans_trns <- eclust(datT2_trns, "kmeans", k = 2, nstart = 25, nboot = 10000, 
-                 verbose = TRUE)
-kmeans_res <- eclust(datT2_res, "kmeans", k = 2, nstart = 25, nboot = 10000, 
-                     verbose = TRUE)
+# 8 clusters for kmeans for transients,
+# 2 clusters for kmeans for residents
+
+# Jaccard Bootstrap Cluster Validation
+library(fpc)
+cboot_trns <- fpc::clusterboot(datT2_trns, B = 100, clustermethod = kmeansCBI,
+                               method = "ward", k = 8, count = TRUE)
+cboot_res <- fpc::clusterboot(datT2_res, B = 100, clustermethod = kmeansCBI,
+                              method = "ward", k = 2, count = TRUE)
+
+# View the means of the Jaccard Bootstrap Validation
+# >0.85 = Highly Stable, >0.75 = Valid and stable, >0.6 = patterns exist but
+# classification is questionable, <0.6 invalid
+
+cboot_trns$bootmean
+cboot_res$bootmean
+
+detach(fpc)
+
+
+
 
 png(file.path("1. Data","Figures","Transient_ClusterOutput.png"), 
     width = 8, height = 6,
@@ -254,16 +116,6 @@ png(file.path("1. Data","Figures","Resident_ClusterOutput.png"),
 fviz_cluster(kmeans_res, stand = FALSE, geom = "point", axes = c(1,2))+
   theme_classic()
 dev.off()
-
-fviz_cluster(kmeans_trns, stand = FALSE, geom = "point", axes = c(1,3))+
-  theme_classic() 
-fviz_cluster(kmeans_trns, stand = FALSE, geom = "point", axes = c(1,4))+
-  theme_classic() 
-
-fviz_cluster(kmeans_res, stand = FALSE, geom = "point", axes = c(1,3))+
-  theme_classic() 
-fviz_cluster(kmeans_res, stand = FALSE, geom = "point", axes = c(1,4))+
-  theme_classic() 
 
 
 # Assign the resulting cluster ID to each 
