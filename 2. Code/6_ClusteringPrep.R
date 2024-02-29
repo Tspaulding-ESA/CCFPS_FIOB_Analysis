@@ -27,7 +27,7 @@ seasons <- data.frame(
          end = yday(end)) %>%
   mutate(season_sub = stringr::str_remove(season,"_.")) %>%
   group_by(season_sub) %>%
-  mutate(season_duration = sum(season_duration))
+  mutate(season_duration = sum(season_duration, na.rm = TRUE))
 
 #
 tbl_split_weeks %>%
@@ -63,7 +63,7 @@ season_site_visits %>%
   filter(!(grepl("Release",SiteVisits) & NumSites == 1)) %>%
   mutate(doy = yday(studyweek_startdate(Week))) %>%
   mutate(year = as.numeric(year(studyweek_startdate(Week)))) %>%
-  mutate(year = ifelse(season == "Immigration" & doy > 303,
+  mutate(year = ifelse(season == "Immigration" & doy > 300,
                        year + 1, year)) %>%
   group_by(TagID) %>%
   mutate(first_year = min(year, na.rm = TRUE),
@@ -74,22 +74,18 @@ season_site_visits %>%
   group_by(TagID, AgeBin, season,year) %>%
   summarise(
     season_duration = case_when(
-      season == first_season & year == first_year ~ max(season_duration),
-      TRUE ~ max(season_duration)),
-    inside_sites = sum(
-      unlist(
-        lapply(SiteVisits,function(x){unlist(x, 
-                                             recursive = TRUE) %in% inside}))),
-    outside_sites = sum(
-      unlist(
-        lapply(SiteVisits,function(x){unlist(x, 
-                                             recursive = TRUE) %in% outside}))),
-    all_sites = inside_sites + outside_sites) %>%
+      season == first_season & year == first_year ~ max(season_duration, na.rm = TRUE),
+      TRUE ~ max(season_duration, na.rm = TRUE)),
+    inside_sites_total = 
+      sum(unlist(lapply(SiteVisits,
+                        function(x){unlist(x, recursive = TRUE) %in% inside})
+                 )==TRUE),
+    outside_sites_total =  
+      sum(unlist(lapply(SiteVisits,
+                        function(x){unlist(x, recursive = TRUE) %in% outside})
+                 )==TRUE),
+    all_sites_total = inside_sites_total + outside_sites_total) %>% 
   group_by(TagID, AgeBin, year, season) %>% 
-  summarise(season_duration = sum(season_duration),
-            inside_sites_total = sum(inside_sites),
-            outside_sites_total = sum(outside_sites),
-            all_sites_total = sum(all_sites)) %>%
   mutate(inside_site_freq = inside_sites_total/season_duration,
          outside_site_freq = outside_sites_total/season_duration,
          all_site_freq = all_sites_total/season_duration) %>%
@@ -111,7 +107,7 @@ WkDetectedRcvrs <- season_site_visits %>%
     TRUE ~ NumSites))  %>%
   mutate(doy = yday(studyweek_startdate(Week))) %>%
   mutate(year = as.numeric(year(studyweek_startdate(Week)))) %>%
-  mutate(year = ifelse(season == "Immigration" & doy > 303,
+  mutate(year = ifelse(season == "Immigration" & doy > 300,
                        year + 1, year)) %>%
   group_by(TagID, AgeBin, year, season) %>%
   summarise(weekly_receivers_mean = round(mean(NumSites, na.rm = TRUE),0),
@@ -129,29 +125,30 @@ Wks_Undetected <- season_bkm_bin %>%
   summarise(SiteCode = max(SiteCode, na.rm = TRUE)) %>%
   mutate(doy = yday(studyweek_startdate(Week))) %>%
   mutate(year = as.numeric(year(studyweek_startdate(Week)))) %>%
-  mutate(year = ifelse(season == "Immigration" & doy > 303,
-                       year + 1, year)) %>%
+  mutate(year = ifelse(season == "Immigration"& doy > 300,
+                       year + 1, year)) %>% 
   group_by(TagID, year, season, season_duration, AgeBin) %>%
   mutate(
-    detection_change = coalesce(!is.na(SiteCode), FALSE) %>% 
+    detection_change = coalesce(!is.na(SiteCode), TRUE) %>% 
       cumsum()
-  ) %>%
-  filter(is.na(SiteCode)) %>%
-  group_by(TagID,  AgeBin, year, season, season_duration,detection_change) %>%
+  ) %>% 
+  mutate(SiteCode = !is.na(SiteCode)) %>%
+  group_by(TagID,  AgeBin, year, season, season_duration, SiteCode, detection_change) %>%
   tally(name = "time_btwn") %>%
-  mutate(time_btwn = ifelse(time_btwn > season_duration, 
-                            season_duration, 
-                            time_btwn)) %>%
+  mutate(time_btwn = case_when(
+    time_btwn > season_duration ~ season_duration,
+    time_btwn == 1 & SiteCode ~ 0,
+    TRUE~time_btwn-1)) %>%
   ungroup() %>%
   group_by(TagID,AgeBin, year, season, season_duration) %>%
   summarise(time_btwn_detects_max = max(time_btwn, na.rm = TRUE),
-            time_btwn_detects_mean = round(mean(time_btwn,na.rm = TRUE),0))
+            time_btwn_detects_total = sum(time_btwn,na.rm = TRUE))
 
 ## Weeks btwn Movements ====================================================
 season_week_split %>%
   select(TagID, AgeBin, season, season_duration, LocationChange, move_direction, .start) %>%
   filter(!(move_direction %in% c("New Tag","NOT TRANSIT"))) %>%
-  mutate(year = ifelse(yday(.start) > 303, 
+  mutate(year = ifelse(season == "Immigration" & yday(.start) > 303, 
                        year(.start)+1,
                        year(.start))) %>%
   group_by(TagID, AgeBin, year, season, season_duration, LocationChange, move_direction) %>%
@@ -215,9 +212,10 @@ avg_exit_wk <- emmigration_table %>%
   mutate(woy = lubridate::week(studyweek_startdate(Week)),
          year = year(studyweek_startdate(Week)),
          doy = yday(studyweek_startdate(Week))) %>%
-  mutate(year = ifelse(doy > 303,
+  left_join(seasons, by = join_by(between(x$Week, y$start, y$end))) %>%
+  mutate(year = ifelse(season_sub == "Immigration" & doy > 300,
                        year + 1, year)) %>%
-  group_by(TagID, year) %>%
+  group_by(TagID, year, "season" = season_sub) %>%
   summarise(mean_exit_woy = mean(woy))
 
 ## Avg Week of Year of Entry ===============================================
@@ -227,9 +225,10 @@ avg_entry_wk <- emmigration_table %>%
   mutate(woy = lubridate::week(studyweek_startdate(Week)),
          year = year(studyweek_startdate(Week)),
          doy = yday(studyweek_startdate(Week))) %>%
-  mutate(year = ifelse(doy > 303,
+  left_join(seasons, by = join_by(between(x$Week, y$start, y$end))) %>%
+  mutate(year = ifelse(season_sub == "Immigration" & doy > 300,
                        year + 1, year)) %>%
-  group_by(TagID, year) %>%
+  group_by(TagID, year, "season" = season_sub) %>%
   summarise(mean_entry_woy = mean(woy))
 
 ## Number of Exits and Entries =============================================
@@ -238,7 +237,7 @@ season_week_split %>%
          start, end,.start) %>%
   mutate(doy = yday(.start)) %>%
   mutate(year = as.numeric(year(.start))) %>%
-  mutate(year = ifelse(season == "Immigration" & doy > 303,
+  mutate(year = ifelse(season == "Immigration" & doy > 300,
                        year + 1, year)) %>%
   group_by(TagID) %>%
   mutate(first_year = min(year),
@@ -249,8 +248,8 @@ season_week_split %>%
                                   season_duration)) %>%
   filter(!(move_direction %in% c("New Tag","NOT TRANSIT","UNRESOLVED TRANSIT"))) %>%
   group_by(year, TagID, AgeBin, season) %>%
-  mutate(season_duration = max(season_duration)) %>%
-  distinct(TagID, AgeBin, season, season_duration, move_direction) %>%
+  mutate(season_duration = max(season_duration, na.rm = TRUE)) %>% 
+  distinct(TagID, AgeBin, season, season_duration, LocationChange, move_direction) %>%
   mutate(count = case_when(
     move_direction == "ENTRY AND EXIT x 2" ~ 4,
     move_direction == "ENTRY AND EXIT" ~ 2,
@@ -295,9 +294,9 @@ season_week_split %>%
   summarise(residence = n()) %>% 
   ungroup() %>%
   group_by(TagID, AgeBin, year, season, Location) %>%
-  summarise(residence_total = sum(residence),
-            residence_mean = mean(residence),
-            residence_max = max(residence)) %>%
+  summarise(residence_total = sum(residence, na.rm = TRUE),
+            residence_mean = mean(residence, na.rm = TRUE),
+            residence_max = max(residence, na.rm = TRUE)) %>%
   pivot_wider(names_from = Location,
               values_from = residence_total:residence_max,
               names_sep = "_",
@@ -334,7 +333,7 @@ dat <- seasonal_site_visit_sum %>%
   left_join(gate_ops, by = c("TagID","AgeBin", "season", "year")) %>%
   filter(!(TagID %in% no_detect_tags)) %>% # Remove tags with no detections
   replace_na(list(TagID = NA,
-                  time_btwn_detects_mean = 100,
+                  time_btwn_detects_total = 100,
                   time_btwn_detects_max = 100,
                   time_btwn_mvmts_mean = 100,
                   time_btwn_mvmts_max = 100,
@@ -364,7 +363,20 @@ dat <- seasonal_site_visit_sum %>%
          #Species = ifelse(Species == "Striped Bass",1,2),
          AgeBin = as.numeric(factor(AgeBin, levels = c("0","1-2","3-5","6+"))),
          wyt = as.numeric(wyt),
-         season = as.numeric(factor(season, levels = c("Immigration","Spawn","Emmigration","Residence")))
+         season = as.numeric(factor(season, levels = c("Immigration","Spawn","Emmigration","Residence"))),
+         time_btwn_detects_max = ifelse(time_btwn_detects_max == 100,
+                                         season_duration,
+                                         time_btwn_detects_max),
+         time_btwn_detects_total = ifelse(time_btwn_detects_total == 100,
+                                         season_duration,
+                                         time_btwn_detects_total),
+         time_btwn_mvmts_max = ifelse(time_btwn_mvmts_max == 100,
+                                        season_duration,
+                                        time_btwn_mvmts_max),
+         time_btwn_mvmts_mean = ifelse(time_btwn_mvmts_mean == 100,
+                                         season_duration,
+                                         time_btwn_mvmts_mean)
+         
   ) %>%
   distinct() %>%
   column_to_rownames(var = "ID") %>%
