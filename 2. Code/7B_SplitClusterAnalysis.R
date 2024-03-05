@@ -16,7 +16,8 @@ dat_trns <- dat %>%
            outside_sites_total > 0)
 
 datT1_trns <- dat_trns %>%
-  decostand(method = "standardize") %>% 
+  decostand(method = "standardize") %>%
+  select(-ccf_cross) %>%
   filter(!is.na(AgeBin))
 
 dat_res <- dat %>% 
@@ -28,7 +29,8 @@ datT1_res <- dat_res %>%
   select(-outside_sites_total, -outside_site_freq, -all_sites_total, -all_site_freq, 
          -exit_total,-exit_freq, -entry_total, -entry_freq, -all_total, -all_freq,
          -residence_max_OUTSIDE, -residence_mean_OUTSIDE, -residence_total_OUTSIDE,
-         -mean_exit_woy, -mean_entry_woy, -time_btwn_mvmts_mean, -time_btwn_mvmts_max)%>%
+         -mean_exit_woy, -mean_entry_woy, -time_btwn_mvmts_mean, -time_btwn_mvmts_max,
+         -ccf_cross)%>%
   filter(!is.na(AgeBin))
 # Exploration ==============================================================
 
@@ -76,18 +78,18 @@ datT2_res <- datT1_res %>%
 
 # Perform Clustering #######################################################
 # K-means Clustering using gap statistic to identify optimal clusters
-kmeans_trns <- eclust(datT2_trns, "kmeans", nboot = 200, verbose = TRUE)
-kmeans_res <- eclust(datT2_res, "kmeans", nboot = 200, verbose = TRUE)
+kmeans_trns <- eclust(datT2_trns, "kmeans", k.max = 4, nboot = 1000, verbose = TRUE)
+kmeans_res <- eclust(datT2_res, "kmeans", k.max = 4, nboot = 1000, verbose = TRUE)
 
 # 9 clusters for kmeans for transients,
 # 3 clusters for kmeans for residents
 
 # Jaccard Bootstrap Cluster Validation
 library(fpc)
-cboot_trns <- fpc::clusterboot(datT2_trns, B = 500, clustermethod = kmeansCBI,
-                               k = 9, count = TRUE)
-cboot_res <- fpc::clusterboot(datT2_res, B = 500, clustermethod = kmeansCBI,
-                              k = 2, count = TRUE)
+cboot_trns <- fpc::clusterboot(datT2_trns, B = 1000, clustermethod = kmeansCBI,
+                               k = 4, count = FALSE, seed = 123)
+cboot_res <- fpc::clusterboot(datT2_res, B = 1000, clustermethod = kmeansCBI,
+                              k = 2, count = FALSE, seed = 123)
 
 # View the means of the Jaccard Bootstrap Validation
 # >0.85 = Highly Stable, >0.75 = Valid and stable, >0.6 = patterns exist but
@@ -98,19 +100,19 @@ cboot_trns
 cboot_res
 
 # Reduce the groups to see if clustering is improved
-cboot_trns <- fpc::clusterboot(datT2_trns, B = 500, clustermethod = kmeansCBI,
-                               k = 2, count = TRUE)
-cboot_res <- fpc::clusterboot(datT2_res, B = 500, clustermethod = kmeansCBI,
-                              k = 2, count = TRUE)
+cboot_trns <- fpc::clusterboot(datT2_trns, B = 1000, clustermethod = kmeansCBI,
+                               k = 2, count = FALSE, seed = 123)
+cboot_res <- fpc::clusterboot(datT2_res, B = 1000, clustermethod = kmeansCBI,
+                              k = 2, count = FALSE, seed = 123)
 
 cboot_trns$bootmean
 cboot_res$bootmean
 
-detach(fpc)
-
 # Jaccard Bootstrapping best supports 3 clusters for transients and 2 for residents
-kmeans_trns <- eclust(datT2_trns, "kmeans", k = 2, nboot = 200, verbose = TRUE)
-kmeans_res <- eclust(datT2_res, "kmeans", k = 2, nboot = 200, verbose = TRUE)
+kmeans_trns <- eclust(datT2_trns, "kmeans", k = 2, nboot = 1000, verbose = TRUE,
+                      seed = 123)
+kmeans_res <- eclust(datT2_res, "kmeans", k = 2, nboot = 1000, verbose = TRUE,
+                     seed = 123)
 
 png(file.path("1. Data","Figures","Transient_ClusterOutput.png"), 
     width = 8, height = 6,
@@ -127,8 +129,8 @@ fviz_cluster(kmeans_res, stand = FALSE, geom = "point", axes = c(1,2))+
 dev.off()
 
 # Check the Silhouette Width
-sil_trns <- fviz_nbclust(datT2_trns, kmeans, method = "silhouette", nboot = 1000)
-sil_res <- fviz_nbclust(datT2_res, kmeans, method = "silhouette", nboot = 1000)
+(sil_trns <- fviz_nbclust(datT2_trns, kmeans, method = "silhouette", nboot = 1000))
+(sil_res <- fviz_nbclust(datT2_res, kmeans, method = "silhouette", nboot = 1000))
 png(file.path("1. Data","Figures","Transient_Sil_Plot.png"),
     width = 8, height = 6,
     units = "in", res = 600)
@@ -258,8 +260,7 @@ write.csv(dunn_test,file.path("1. Data","Outputs","Dunn_Test.csv"),
 assigned_dat %>%
   group_by(cluster) %>%
   summarise(count = n(),
-            mean = across(where(~is.numeric(.x)), ~round(mean(.x, na.rm = TRUE),2)),
-            median = across(where(~is.numeric(.x)), ~round(median(.x, na.rm = TRUE),2))) %>%
+            mean = across(where(~is.numeric(.x)), ~round(mean(.x, na.rm = TRUE),2))) %>%
   t()
 
 ### Feature Importance ====================================================
@@ -527,7 +528,7 @@ mean_exit_woy <- ggplot()+
               group_by(cluster) %>%
               summarise(mean = mean(mean_exit_woy),
                         count = n()),
-            aes(y = lubridate::ymd("2017-12-31")+(mean*7), x = 1.25, 
+            aes(y = lubridate::ymd("2017-12-31")+(mean*7), x = 1.5, 
                 label = paste("N =",count, sep = " ")),
             inherit.aes = FALSE)+
   scale_fill_manual(name = "Season",
@@ -538,7 +539,7 @@ mean_exit_woy <- ggplot()+
                     labels = c("Immigration","Spawn","Emmigration",
                                "Residence","Immigration"))+
   facet_grid(cluster ~ .,drop = FALSE)+
-  coord_flip(xlim =c(0.5,1.5), expand = FALSE)+
+  coord_flip(xlim =c(0.5,2), expand = FALSE)+
   theme_classic()+
   scale_y_date(name = "Date", date_labels = "%b",
                breaks = "1 month")+
@@ -568,17 +569,17 @@ mean_entry_woy <- ggplot()+
   geom_text(data = assigned_dat%>%
               separate(TagAge,into = c("TagID","AgeBin"), sep = "-",
                        extra = "merge") %>%
-              filter(mean_entry_woy > 1 & cluster %in% c("M1","M2")) %>%
+              filter(mean_entry_woy > 1 & cluster %in% c("T1","T2")) %>%
               select(TagID, mean_entry_woy, cluster) %>%
               distinct() %>%
               group_by(cluster) %>%
               summarise(mean = mean(mean_entry_woy),
                         count = n()),
-            aes(y = lubridate::ymd("2017-12-31")+(mean*7), x = 1.25, 
+            aes(y = lubridate::ymd("2017-12-31")+(mean*7), x = 1.5, 
                 label = paste("N =",count, sep = " ")),
             inherit.aes = FALSE)+
   facet_grid(cluster ~ .,drop = FALSE)+
-  coord_flip(xlim =c(0.5,1.5), expand = FALSE)+
+  coord_flip(xlim =c(0.5,2), expand = FALSE)+
   theme_classic()+
   scale_fill_manual(name = "Season",
                     breaks = c("Immigration_a","Spawn","Emmigration",
@@ -595,6 +596,52 @@ mean_entry_woy <- ggplot()+
   labs(title = "Mean Week of Entry")
 mean_entry_woy
 ggsave(file.path("1. Data","Figures","EntryWeek.png"), device = "png",
+       width = 8, height = 6,        units = "in",dpi = 600)
+
+mean_crossing_woy <- ggplot()+
+  geom_ribbon(data = seasons_timing, aes(x = x, 
+                                         ymin = start, 
+                                         ymax = end,
+                                         fill = season),
+              alpha = 0.5)+
+  geom_violin(data= assigned_dat%>%
+                separate(TagAge,into = c("TagID","AgeBin"), sep = "-",
+                         extra = "merge") %>%
+                filter(ccf_cross > 0),
+              aes(y = lubridate::ymd("2017-12-31")+(ccf_cross*7), x = 1), 
+              fill = "grey50",
+              trim = FALSE, bw = 7)+
+  geom_text(data = assigned_dat%>%
+              separate(TagAge,into = c("TagID","AgeBin"), sep = "-",
+                       extra = "merge") %>%
+              filter(ccf_cross > 1) %>%
+              select(TagID, ccf_cross, cluster) %>%
+              distinct() %>%
+              group_by(cluster) %>%
+              summarise(mean = mean(ccf_cross),
+                        count = n()),
+            aes(y = lubridate::ymd("2017-12-31")+(mean*7), x = 1.5, 
+                label = paste("N =",count, sep = " ")),
+            inherit.aes = FALSE)+
+  scale_fill_manual(name = "Season",
+                    breaks = c("Immigration_a","Spawn","Emmigration",
+                               "Residence","Immigration_b"),
+                    values = c("olivedrab1","steelblue2","tomato2",
+                               "goldenrod","olivedrab1"),
+                    labels = c("Immigration","Spawn","Emmigration",
+                               "Residence","Immigration"))+
+  facet_grid(cluster ~ .,drop = FALSE)+
+  coord_flip(xlim =c(0.5,2), expand = FALSE)+
+  theme_classic()+
+  scale_y_date(name = "Date", date_labels = "%b",
+               breaks = "1 month")+
+  theme(axis.text.x = element_text(angle = -45, hjust = 0),
+        axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        panel.border = element_rect(fill = NA, color = "grey50", linewidth = 0.5))+
+  labs(title = "Mean Week of crossing CCF", x = "")
+mean_crossing_woy
+ggsave(file.path("1. Data","Figures","CrossingWeek.png"), device = "png",
        width = 8, height = 6,        units = "in",dpi = 600)
 
 ### Time between Detects Plot ---------------------------------------------

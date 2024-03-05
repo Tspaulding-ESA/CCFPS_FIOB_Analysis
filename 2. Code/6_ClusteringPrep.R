@@ -231,6 +231,23 @@ avg_entry_wk <- emmigration_table %>%
   group_by(TagID, year, "season" = season_sub) %>%
   summarise(mean_entry_woy = mean(woy))
 
+## Avg Week of Year of Cross-Forebay Transits ==============================
+avg_x_ccf <- season_site_visits %>%
+  ungroup()%>%
+  group_by(TagID, Week) %>%
+  mutate(cross_ccf = case_when(
+    sum(as.numeric(grepl("IC",as.character(unlist(SiteVisits))))) > 0 &
+      sum(as.numeric(grepl("RG",as.character(unlist(SiteVisits))))) > 0 ~ TRUE,
+    TRUE ~ FALSE)) %>%
+  ungroup() %>%
+  filter(cross_ccf) %>%
+  mutate(woy = week(studyweek_startdate(Week)),
+         year = as.numeric(year(studyweek_startdate(Week)))) %>%
+  mutate(year = ifelse(season == "Immigration" & doy > 300,
+                       year + 1, year)) %>%
+  group_by(TagID, year, "season" = season_sub) %>%
+  summarise(ccf_cross = mean(woy))
+
 ## Number of Exits and Entries =============================================
 season_week_split %>%
   select(TagID, AgeBin, season, season_duration, LocationChange, move_direction,
@@ -328,15 +345,16 @@ dat <- seasonal_site_visit_sum %>%
   left_join(Distances) %>%
   left_join(avg_exit_wk) %>%
   left_join(avg_entry_wk) %>%
+  left_join(avg_x_ccf) %>%
   left_join(movement_metrics) %>%
   left_join(residence) %>% 
   left_join(gate_ops, by = c("TagID", "season", "year")) %>%
   filter(!(TagID %in% no_detect_tags)) %>% # Remove tags with no detections
   replace_na(list(TagID = NA,
-                  time_btwn_detects_total = season_duration,
-                  time_btwn_detects_max = season_duration,
-                  time_btwn_mvmts_mean = season_duration,
-                  time_btwn_mvmts_max = season_duration,
+                  time_btwn_detects_total = 0,
+                  time_btwn_detects_max = 0,
+                  time_btwn_mvmts_mean = 0,
+                  time_btwn_mvmts_max = 0,
                   mean_distance = 0,
                   q05_distance = 0,
                   q25_distance = 0, 
@@ -345,6 +363,7 @@ dat <- seasonal_site_visit_sum %>%
                   q99_distance = 0,
                   mean_exit_woy = 0, 
                   mean_entry_woy = 0,
+                  ccf_cross = 0,
                   entry_total = 0, 
                   exit_total = 0, 
                   all_total = 0,
