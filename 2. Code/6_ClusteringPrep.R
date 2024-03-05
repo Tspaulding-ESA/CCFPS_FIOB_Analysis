@@ -109,7 +109,7 @@ WkDetectedRcvrs <- season_site_visits %>%
   mutate(year = as.numeric(year(studyweek_startdate(Week)))) %>%
   mutate(year = ifelse(season == "Immigration" & doy > 300,
                        year + 1, year)) %>%
-  group_by(TagID, AgeBin, year, season) %>%
+  group_by(TagID, year, season) %>%
   summarise(weekly_receivers_mean = round(mean(NumSites, na.rm = TRUE),0),
             weekly_receivers_max = max(NumSites, na.rm = TRUE)) %>%
   mutate(weekly_receivers_mean = ifelse(is.na(weekly_receivers_mean),0,weekly_receivers_mean),
@@ -140,7 +140,7 @@ Wks_Undetected <- season_bkm_bin %>%
     time_btwn == 1 & SiteCode ~ 0,
     TRUE~time_btwn-1)) %>%
   ungroup() %>%
-  group_by(TagID,AgeBin, year, season, season_duration) %>%
+  group_by(TagID, year, season, season_duration) %>%
   summarise(time_btwn_detects_max = max(time_btwn, na.rm = TRUE),
             time_btwn_detects_total = sum(time_btwn,na.rm = TRUE))
 
@@ -156,7 +156,7 @@ season_week_split %>%
   group_by(TagID, AgeBin, year, season, season_duration) %>%
   arrange(TagID, Week, year) %>%
   mutate(time_btwn_movements = Week - lag(Week)) %>%
-  group_by(TagID, AgeBin, year, season, season_duration) %>% 
+  group_by(TagID, year, season, season_duration) %>% 
   summarise(time_btwn_mvmts_max = max(time_btwn_movements, na.rm = TRUE),
             time_btwn_mvmts_mean = round(mean(time_btwn_movements,na.rm = TRUE),0)) %>%
   mutate(across(time_btwn_mvmts_max:time_btwn_mvmts_mean, 
@@ -186,7 +186,7 @@ season_site_visits %>%
     SiteA == "CLRS" & SiteB %in% inside ~ 0, 
     TRUE ~ Distance
   )) %>%
-  group_by(season, Week, TagID, AgeBin) %>%
+  group_by(season, Week, TagID) %>%
   summarise(weekly_max_distance = max(Distance),
             weekly_mean_distance = mean(Distance)) -> WeeklyDistance
 
@@ -197,7 +197,7 @@ WeeklyDistance %>%
   mutate(year = as.numeric(year(studyweek_startdate(Week)))) %>%
   mutate(year = ifelse(season == "Immigration" & doy > 303,
                        year + 1, year)) %>%
-  group_by(TagID, AgeBin, year, season) %>%
+  group_by(TagID, year, season) %>%
   summarise(mean_distance = mean(weekly_mean_distance, na.rm = TRUE),
             q05_distance = quantile(weekly_max_distance, 0.01, na.rm = TRUE),
             q25_distance = quantile(weekly_max_distance, 0.25, na.rm = TRUE),
@@ -247,7 +247,7 @@ season_week_split %>%
                                   ceiling((end-yday(.start))/7),
                                   season_duration)) %>%
   filter(!(move_direction %in% c("New Tag","NOT TRANSIT","UNRESOLVED TRANSIT"))) %>%
-  group_by(year, TagID, AgeBin, season) %>%
+  group_by(year, TagID, season) %>%
   mutate(season_duration = max(season_duration, na.rm = TRUE)) %>% 
   distinct(TagID, AgeBin, season, season_duration, LocationChange, move_direction) %>%
   mutate(count = case_when(
@@ -265,7 +265,7 @@ season_week_split %>%
     total_mvmts = entries+exits) %>%
   select(-c(ENTRY,EXIT,`ENTRY AND EXIT`)) %>%
   ungroup() %>%
-  group_by(TagID, AgeBin, year, season) %>%
+  group_by(TagID, year, season) %>%
   summarise(entry_total = sum(entries),
             exit_total = sum(exits),
             all_total = sum(total_mvmts),
@@ -293,7 +293,7 @@ season_week_split %>%
   group_by(year, TagID, AgeBin, season, LocationChange, Location) %>%
   summarise(residence = n()) %>% 
   ungroup() %>%
-  group_by(TagID, AgeBin, year, season, Location) %>%
+  group_by(TagID, year, season, Location) %>%
   summarise(residence_total = sum(residence, na.rm = TRUE),
             residence_mean = mean(residence, na.rm = TRUE),
             residence_max = max(residence, na.rm = TRUE)) %>%
@@ -316,7 +316,7 @@ season_week_split %>%
   select(TagID, AgeBin, year, season, week, wyt, perc_open) %>%
   filter(!is.na(wyt)) %>% # Few couple weeks are missing data
   ungroup() %>% 
-  group_by(TagID, AgeBin, year, season) %>%
+  group_by(TagID, year, season) %>%
   summarise(wyt = getmode(wyt),
             gate_perc_open = mean(perc_open, na.rm = TRUE)) -> gate_ops
 
@@ -329,14 +329,14 @@ dat <- seasonal_site_visit_sum %>%
   left_join(avg_exit_wk) %>%
   left_join(avg_entry_wk) %>%
   left_join(movement_metrics) %>%
-  left_join(residence) %>%
-  left_join(gate_ops, by = c("TagID","AgeBin", "season", "year")) %>%
+  left_join(residence) %>% 
+  left_join(gate_ops, by = c("TagID", "season", "year")) %>%
   filter(!(TagID %in% no_detect_tags)) %>% # Remove tags with no detections
   replace_na(list(TagID = NA,
-                  time_btwn_detects_total = 100,
-                  time_btwn_detects_max = 100,
-                  time_btwn_mvmts_mean = 100,
-                  time_btwn_mvmts_max = 100,
+                  time_btwn_detects_total = season_duration,
+                  time_btwn_detects_max = season_duration,
+                  time_btwn_mvmts_mean = season_duration,
+                  time_btwn_mvmts_max = season_duration,
                   mean_distance = 0,
                   q05_distance = 0,
                   q25_distance = 0, 
