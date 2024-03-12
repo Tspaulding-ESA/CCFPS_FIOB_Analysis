@@ -149,3 +149,64 @@ pairwise.adonis2 <- function(resp, fact, p.method = "none", nperm = 999) {
   multcomp <- pairwise.table(fun.p, levels(fact), p.adjust.method = p.method)
   return(list(fact = levels(fact), p.value = multcomp, p.adjust.method = p.method))
 }
+
+mlm_select <- function(counter, formula_r, data, dependent){
+  tryCatch(
+    {
+      form_test <- paste0(dependent, " ~ ", formula_r)
+      mlm_test <- nnet::multinom(as.formula(form_test), data = data)
+      list(mlm = mlm_test)
+    },
+    error = function(cond) {
+      message("Model Failed")
+      message("Here's the original error message:")
+      message(conditionMessage(cond))
+      # Choose a return value in case of error
+      list(glm = NA)
+    }
+  )
+}
+
+loop_aic = function(model_list, model_suite){
+  # model_list contains a list of model objects for model comparison
+  for(i in 1:length(model_list)){
+    # Initialize with empty df for results
+    if(i == 1){aic_compare_df <- data.frame()}
+    
+    cat('Running AIC for model index:', i, '\n')
+    
+    aic_test = tryCatch(
+      AIC(model_list[[i]]),
+      error = function(e){
+        cat('error triggered at model index: ', i, '\n')
+        return(NA)  # If model run failed, record NA values for WAIC etc.
+      })
+    
+    if(is.na(aic_test)){
+      aic <- NA
+    }else{
+      aic <- AIC(model_list[[i]])
+      cat('AIC for model index:', i, ':', aic, '\n')
+    }
+    tmp = tryCatch({
+      tibble(
+        model_index = i,
+        formula =  paste("cluster ~ ",model_suite$formula_right_part[i]),
+        aic_val = aic)
+    },
+    error = function(e){
+      cat("No Valid Model")
+      return(NA)
+    })
+    tryCatch({
+      if(nrow(tmp)<1) {aic_compare_df}  else {
+        aic_compare_df <- rbind(aic_compare_df, tmp)
+      }},
+      error = function(e){
+        return(aic_compare_df)})
+    # loop over model brms_list model objects
+    if(nrow(aic_compare_df)>0){
+      aic_compare_df <- arrange(aic_compare_df,aic_val)} else {aic_compare_df}
+  }
+  return(aic_compare_df)
+}
