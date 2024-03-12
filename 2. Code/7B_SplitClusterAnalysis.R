@@ -1019,30 +1019,34 @@ top_model <- mlms[aic_compare$model_index[1]][[1]]
 
 coefs <- labels(top_model$terms)[which(!grepl("\\:",labels(top_model$terms)))]
 
-Age_plot <- sjPlot::plot_model(top_model, type = "pred", terms = "AgeBin",
+age_plot <- sjPlot::plot_model(top_model, type = "pred", terms = "AgeBin",
                                  show.data = FALSE, jitter = 0.1, title = "",
-                                 axis.title = c("Age","Probability of Inclusion"))+
+                                 axis.title = c("Age","Probability of Inclusion"),
+                               ci.lvl = 0.95, show.p = TRUE)+
   theme_classic()+
   theme(axis.title =element_text(family = "", size = 12))
 
-Season_plot <- sjPlot::plot_model(top_model, type = "pred", terms = "season",
+season_plot <- sjPlot::plot_model(top_model, type = "pred", terms = "season",
                                   show.data = FALSE, jitter = 0.1, title = "",
-                                  axis.title = c("Season","Probability of Inclusion"))+
+                                  axis.title = c("Season","Probability of Inclusion"),
+                                  ci.lvl = 0.95, show.p = TRUE)+
   theme_classic()+
   theme(axis.title =element_text(family = "", size = 12),
         axis.text.x = element_text(angle = -45, hjust = 0))
 
-wyt <- sjPlot::plot_model(top_model, type = "pred", terms = "wyt",
+wyt_plot <- sjPlot::plot_model(top_model, type = "pred", terms = "wyt",
                           show.data = FALSE, jitter = 0.1, title = "",
-                          axis.title = c("Water Year Type","Probability of Inclusion"))+
+                          axis.title = c("Water Year Type","Probability of Inclusion"),
+                          ci.lvl = 0.95, show.p = TRUE)+
   theme_classic()+
   theme(axis.title =element_text(family = "", size = 12),
         axis.text.x = element_text(angle = -45, hjust = 0))
 
-gate <- sjPlot::plot_model(top_model, type = "pred", terms = "gate_perc_open [all]",
+gate_plot <- sjPlot::plot_model(top_model, type = "pred", terms = "gate_perc_open [all]",
                           show.data = FALSE, jitter = 0.1, title = "",
                           axis.title = c("Percent of Time with Gate Open",
-                                         "Probability of Inclusion"))+
+                                         "Probability of Inclusion"),
+                          ci.lvl = 0.95, show.p = TRUE)+
   theme_classic()+
   theme(axis.title =element_text(family = "", size = 12),
         axis.text.x = element_text(angle = -45, hjust = 0))
@@ -1055,13 +1059,4 @@ int_plots <- sjPlot::plot_model(top_model, type = "int",
                                 mdrt.values = "meansd")+
   theme(axis.title =element_text(family = "", size = 12),
         axis.text.x = element_text(angle = -45, hjust = 0))+
-  facet_wrap(scales = "free")+
   scale_color_discrete(name = "Water Year Type")
-
-map <- arrangeGrob(pond_samples_minnows)
-
-ind_plots <- arrangeGrob(depth_plot, veg_plot, set_plot, nrow = 1)
-
-int2_plots <- arrangeGrob(int_plots[[1]],int_plots[[2]],int_plots[[3]],nrow = 1)
-
-int3_plot <- arrangeGrob(int_plots[[4]])
