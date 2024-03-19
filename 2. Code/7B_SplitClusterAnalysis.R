@@ -30,14 +30,20 @@ datT1_res <- dat_res %>%
          -mean_exit_woy, -mean_entry_woy, -time_btwn_mvmts_mean, 
          -ccf_cross, -wyt, -gate_perc_open)
 
+datT1_all <-dat %>%
+  decostand(method = "standardize") %>%
+  select(-ccf_cross, -wyt, -gate_perc_open)
+
 # Exploration ==============================================================
 
 ## Correlation plot ========================================================
 corr_trns = cor(datT1_trns)
 corr_res = cor(datT1_res)
+corr_all = cor(datT1_all)
 
 testRes_trns = corrplot::cor.mtest(datT1_trns, conf.level = 0.95)
 testRes_res = corrplot::cor.mtest(datT1_res, conf.level = 0.95)
+testRes_all = corrplot::cor.mtest(datT1_all, conf.level = 0.95)
 
 corrplot::corrplot(corr_trns, p.mat = testRes_trns$p, method = 'circle', type = 'lower', 
                    insig='blank',
@@ -71,11 +77,13 @@ View(corr_res)
 # NONE!
 datT2_trns <- datT1_trns
 datT2_res <- datT1_res
+datT2_all <- datT1_all
 
 # Perform Clustering #######################################################
 # K-means Clustering using gap statistic to identify optimal clusters
 kmeans_trns <- eclust(datT2_trns, "kmeans", k.max = 10, nboot = 500, verbose = TRUE)
 kmeans_res <- eclust(datT2_res, "kmeans", k.max = 10, nboot = 500, verbose = TRUE)
+kmeans_all <- eclust(datT2_all, "kmeans", k.max = 10, nboot = 500, verbose = TRUE)
 
 # Jaccard Bootstrap Cluster Validation
 library(fpc)
@@ -83,16 +91,21 @@ cboot_trns <- fpc::clusterboot(datT2_trns, B = 1000, clustermethod = kmeansCBI,
                                k = 3, count = FALSE, seed = 123)
 cboot_res <- fpc::clusterboot(datT2_res, B = 1000, clustermethod = kmeansCBI,
                               k = 4, count = FALSE, seed = 123)
+cboot_all <- fpc::clusterboot(datT2_all, B = 1000, clustermethod = kmeansCBI,
+                              k = 4, count = FALSE, seed = 123)
 
 # View the means of the Jaccard Bootstrap Validation
 # >0.85 = Highly Stable, >0.75 = Valid and stable, >0.6 = patterns exist but
 # classification is questionable, <0.6 invalid
 (trns_bootmean <- cboot_trns$bootmean)
 (res_bootmean <- cboot_res$bootmean)
+(all_bootmean <- cboot_all$bootmean)
 
 kmeans_trns <- eclust(datT2_trns, "kmeans", k = 3, nboot = 1000, verbose = TRUE,
                       seed = 123)
 kmeans_res <- eclust(datT2_res, "kmeans", k = 4, nboot = 1000, verbose = TRUE,
+                     seed = 123)
+kmeans_all <- eclust(datT2_all, "kmeans", k = 4, nboot = 1000, verbose = TRUE,
                      seed = 123)
 
 png(file.path("1. Data","Figures","Transient_ClusterOutput.png"), 
@@ -311,10 +324,11 @@ trns_imp_plot <- ggplot(savedImp %>%
   theme_classic()+
   theme(
     axis.text.x = element_text(angle = -45, hjust = 0),
-    plot.margin = unit(c(0,5,0,0),"lines")
+    plot.margin = unit(c(0,0,0,0),"lines")
   )+
   lims(y = c(0,0.018))+
-  labs(x = "", y = "Rate of Misclassification")
+  coord_flip()+
+  labs(x = "", y = "")
 
 res_imp_plot <- ggplot(savedImp %>%
                          filter(group == "resident"))+
@@ -323,15 +337,18 @@ res_imp_plot <- ggplot(savedImp %>%
                    ymax = ymax, group = variable), stat = "identity")+
   scale_y_continuous(limits = c(0, 0.03))+
   theme_classic()+
+  coord_flip()+
   theme(
     axis.text.x = element_text(angle = -45, hjust = 0),
-    plot.margin = unit(c(0,5,0,0),"lines")
+    plot.margin = unit(c(0,1,0,0),"lines")
   )+
-  labs(x = "", y = "Rate of Misclassification")
+  labs(x = "", y = "")
 
 png(file.path("1. Data","Figures","FeatureImportance.png"),
-    width = 8, height = 6,  units = "in", res = 600)
-print(gridExtra::grid.arrange(trns_imp_plot, res_imp_plot, nrow = 2))
+    width = 6, height = 6,  units = "in", res = 600)
+print(gridExtra::grid.arrange(trns_imp_plot, res_imp_plot, nrow = 1,
+                              padding = unit(0,"line"), 
+                              bottom = "Rate of Misclassification"))
 dev.off()
 
 ## Examine the variables by cluster --------------------------------------
@@ -866,9 +883,9 @@ for(i in (tag_clusters %>% pull(var = "TagID") %>% unique())){
       # Season Background
       geom_ribbon(data = cl_month %>%
                     ungroup() %>%
-                    rowwise() %>%
-                    mutate(y = ifelse(y == 16, max_site, y),
-                           xmin = ymd(paste(year, month, 1, sep = "-")),
+                    mutate(y = ifelse(y == 16, max_site, y)) %>%
+                    group_by(year,month,cluster,y) %>%
+                    mutate(xmin = ymd(paste(year, month, 1, sep = "-")),
                            xmax = ymd(paste(year, month, 
                                             days_in_month(month), 
                                             sep = "-"))),
@@ -876,7 +893,7 @@ for(i in (tag_clusters %>% pull(var = "TagID") %>% unique())){
                   xmin = xmin,
                   xmax = xmax,
                   fill = cluster,
-                  group = interaction(year, month)),
+                  group = interaction(year, month, cluster)),
                   alpha = 0.5)+
       # Detection History
       geom_point(data = tmp %>% filter(!is.na(SiteCode)),
@@ -903,6 +920,7 @@ for(i in (tag_clusters %>% pull(var = "TagID") %>% unique())){
                   ungroup() %>%
                   select(SiteCode, AgeBin, year, month, cluster) %>%
                   mutate(SiteCode = max(SiteCode)) %>%
+                  filter(!is.na(AgeBin)) %>%
                   group_by(SiteCode, AgeBin) %>%
                   summarise(year = min(year,na.rm = TRUE),
                             month = min(month, na.rm = TRUE)),
@@ -939,7 +957,7 @@ for(i in (tag_clusters %>% pull(var = "TagID") %>% unique())){
                                studyweek_startdate(max(tmp$Week)+1)),
                       #ylim = c(1,16)
                       )
-    ggsave(file.path("1. Data","Figures","DetectionPlots",paste(tmp$TagID[1],"DetectionHistory.png",sep = "-")),
+    ggsave(file.path("1. Data","Figures","DetectionPlots",paste(tmp$TagID[1],"DetectionHistory_Plain.png",sep = "-")),
            device = "png", width = 10, height = 5, dpi = 600)
   } else {
     print("Tag not in cluster")
@@ -965,98 +983,108 @@ assigned_dat %>%
                             "Wet"))) %>%
   select(-Age2) %>%
   left_join(seasons) %>%
-  mutate(cluster2 = factor(cluster, levels = c("R3","R4","T3","T2","T1"))
+  mutate(season = factor(season, levels = c("Immigration","Spawning","Emmigration",
+                                            "Residence")),
+         cluster2 = factor(cluster, levels = c("R3","R4","T3","T2","T1"))
          ) -> dat
 
-scope_list <- list(
-  AgeBin = c(" 1 +"," AgeBin +"," AgeBin *"),
-  season = c(" 1 +"," season +"," season *"),
-  wyt = c(" 1 +"," wyt +"),
-  gate_open_perc = c(" 1 +", " gate_perc_open +"," gate_perc_open *"))
+age_dunn <- FSA::dunnTest(as.numeric(AgeBin) ~ cluster, data = dat, method = "bonferroni")
+wyt_dunn <- FSA::dunnTest(as.numeric(wyt) ~ cluster, data = dat)
+season_dunn <- FSA::dunnTest(as.numeric(season) ~ cluster, data = dat)
+gate_dunn <- FSA::dunnTest(gate_perc_open ~ cluster, data = dat)
 
-all_scope_pattern <- do.call("expand.grid", scope_list)
-formula_right_part <- apply(all_scope_pattern, 1, 
-                            function(x) stringr::str_squish(gsub("[*+]$","",
-                                                                 gsub("[*+] 1","",
-                                                                      paste0(x, collapse = "")
-                                                                 )
-                            ))
-) %>% unique()
+age_cld <- rcompanion::cldList(comparison = age_dunn$res$Comparison,
+               p.value    = age_dunn$res$P.adj,
+               threshold  = 0.05)[1:2]
 
-(length(unique(formula_right_part)))
+wyt_cld <- rcompanion::cldList(comparison = wyt_dunn$res$Comparison,
+                               p.value    = wyt_dunn$res$P.adj,
+                               threshold  = 0.05)[1:2]
 
-full_suite <- data.frame(formula_right_part)
+season_cld <- rcompanion::cldList(comparison = season_dunn$res$Comparison,
+                               p.value    = season_dunn$res$P.adj,
+                               threshold  = 0.05)[1:2]
 
-# Chinook Structure Response ----------------------------------------------
-mlm_list <- vector("list", 
-                   length = length(full_suite$formula_right_part))  # empty list
+gate_cld <- rcompanion::cldList(comparison = gate_dunn$res$Comparison,
+                                  p.value    = gate_dunn$res$P.adj,
+                                  threshold  = 0.05)[1:2]
 
-cl <- parallel::makeCluster(parallel::detectCores()-4, "SOCK")
-doSNOW::registerDoSNOW(cl)
-nrun <- nrow(full_suite)
-pb <- txtProgressBar(max=nrun, style=3)
-progress <- function(n) setTxtProgressBar(pb, n)
-opts <- list(progress=progress)
+names(age_cld) <- c("cluster","Letter")
+names(wyt_cld) <- c("cluster","Letter")
+names(season_cld) <- c("cluster","Letter")
+names(gate_cld) <- c("cluster","Letter")
 
+ggplot(dat) +
+  geom_boxplot(aes(x = cluster, y = gate_perc_open))+
+  scale_color_brewer(palette = "Dark2")+
+  theme_bw() +
+  geom_text(data = gate_cld, aes(label = Letter, 
+                                 y = max(dat$gate_perc_open), 
+                                 x = cluster,
+                                 color = Letter), 
+            vjust = -0.5,
+            hjust= 0.5,
+            size=3.5,
+            check_overlap = F)+
+  theme(legend.position = "none")+
+  guides(color = "none")+
+  labs(y = "Percent of Time Gate was Open",
+       x = "Cluster")
 
-mlms <- foreach(i = 1:length(full_suite$formula_right_part), .combine = "rbind", .options.snow = opts) %dopar% {
-  mlm_list[i] <- mlm_select(counter = i,
-                            formula_r = full_suite$formula_right_part[i],
-                            data = dat,
-                                dependent = "cluster")  # Models
-}
+ggsave("GatePercentage_Plot.png", device = "png", width = 8, height = 6)
 
-parallel::stopCluster(cl)
+ggplot(dat) +
+  geom_bar(aes(x = cluster, fill = AgeBin, group = AgeBin),
+           position = "fill")+
+  scale_fill_discrete(name = "Age")+
+  scale_color_brewer(palette = "Dark2")+
+  theme_bw() +
+  geom_text(data = age_cld, aes(label = Letter, 
+                                 y = 1, 
+                                 x = cluster,
+                                 color = Letter), 
+            vjust = -0.5,
+            hjust= 0.5,
+            size=3.5,
+            check_overlap = F)+
+  guides(color = "none")+
+  labs(y = "Percent of Behavior States at Age", x = "Cluster")
+ggsave("Age_Plot.png", device = "png", width = 8, height = 6)
 
-aic_compare <- data.frame()
+ggplot(dat) +
+  geom_bar(aes(x = cluster, fill = season, group = season),
+           position = "fill")+
+  scale_color_brewer(palette = "Dark2")+
+  scale_fill_discrete(name = "season")+
+  theme_bw() +
+  geom_text(data = season_cld, aes(label = Letter, 
+                                y = 1, 
+                                x = cluster,
+                                color = Letter), 
+            vjust = -0.5,
+            hjust= 0.5,
+            size=3.5,
+            check_overlap = F)+
+  guides(color = "none")+
+  labs(x = "Cluster",
+       y = "Percent of Behavior States in each Season")
+ggsave("Season_Plot.png", device = "png", width = 8, height = 6)
 
-aic_compare <- loop_aic(mlms, full_suite)
-
-aic_compare <- aic_compare %>% arrange(aic_val) %>% distinct(formula, 
-                                                             .keep_all = T)
-
-top_model <- mlms[aic_compare$model_index[1]][[1]]
-
-coefs <- labels(top_model$terms)[which(!grepl("\\:",labels(top_model$terms)))]
-
-age_plot <- sjPlot::plot_model(top_model, type = "pred", terms = "AgeBin",
-                                 show.data = FALSE, jitter = 0.1, title = "",
-                                 axis.title = c("Age","Probability of Inclusion"),
-                               ci.lvl = 0.95, show.p = TRUE)+
-  theme_classic()+
-  theme(axis.title =element_text(family = "", size = 12))
-
-season_plot <- sjPlot::plot_model(top_model, type = "pred", terms = "season",
-                                  show.data = FALSE, jitter = 0.1, title = "",
-                                  axis.title = c("Season","Probability of Inclusion"),
-                                  ci.lvl = 0.95, show.p = TRUE)+
-  theme_classic()+
-  theme(axis.title =element_text(family = "", size = 12),
-        axis.text.x = element_text(angle = -45, hjust = 0))
-
-wyt_plot <- sjPlot::plot_model(top_model, type = "pred", terms = "wyt",
-                          show.data = FALSE, jitter = 0.1, title = "",
-                          axis.title = c("Water Year Type","Probability of Inclusion"),
-                          ci.lvl = 0.95, show.p = TRUE)+
-  theme_classic()+
-  theme(axis.title =element_text(family = "", size = 12),
-        axis.text.x = element_text(angle = -45, hjust = 0))
-
-gate_plot <- sjPlot::plot_model(top_model, type = "pred", terms = "gate_perc_open [all]",
-                          show.data = FALSE, jitter = 0.1, title = "",
-                          axis.title = c("Percent of Time with Gate Open",
-                                         "Probability of Inclusion"),
-                          ci.lvl = 0.95, show.p = TRUE)+
-  theme_classic()+
-  theme(axis.title =element_text(family = "", size = 12),
-        axis.text.x = element_text(angle = -45, hjust = 0))
-
-int_plots <- sjPlot::plot_model(top_model, type = "int", 
-                                terms = c("season","wyt"),
-                                title = "",
-                                axis.title = c("Season",
-                                               "Probability of Inclusion"),
-                                mdrt.values = "meansd")+
-  theme(axis.title =element_text(family = "", size = 12),
-        axis.text.x = element_text(angle = -45, hjust = 0))+
-  scale_color_discrete(name = "Water Year Type")
+ggplot(dat) +
+  geom_bar(aes(x = cluster, fill = wyt, group = wyt),
+           position = "fill")+
+  scale_color_brewer(palette = "Dark2")+
+  scale_fill_discrete(name = "Water Year Type")+
+  theme_bw() +
+  geom_text(data = wyt_cld, aes(label = Letter, 
+                                   y = 1, 
+                                   x = cluster,
+                                   color = Letter), 
+            vjust = -0.5,
+            hjust= 0.5,
+            size=3.5,
+            check_overlap = F)+
+  guides(color = "none")+
+  labs(x = "Cluster",
+       y = "Percent of Behavior States in each Water Year Type")
+ggsave("WYT_Plot.png", device = "png", width = 8, height = 6)
