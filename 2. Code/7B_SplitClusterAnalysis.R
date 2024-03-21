@@ -144,14 +144,14 @@ cluster_assign_trns <- data.frame("cluster" = factor(cboot_trns$result$result$cl
   rownames_to_column("TagAge") %>%
   mutate(bootmean = trns_bootmean[cluster]) %>%
   mutate(cluster = factor(paste("T",cluster, sep = ""), 
-                          levels = paste("T",sort(unique(kmeans_trns$cluster)),sep ="")))
+                          levels = paste("T",sort(unique(cboot_trns$result$result$cluster)),sep ="")))
 
 cluster_assign_res <- data.frame("cluster" = factor(cboot_res$result$result$cluster,
                                                     levels = sort(unique(cboot_res$result$result$cluster)))) %>%
   rownames_to_column("TagAge") %>%
   mutate(bootmean = res_bootmean[cluster]) %>%
   mutate(cluster = factor(paste("R",cluster, sep = ""), 
-                          levels = paste("R",sort(unique(kmeans_res$cluster)),sep ="")))
+                          levels = paste("R",sort(unique(cboot_res$result$result$cluster)),sep ="")))
 
 cluster_assign <- bind_rows(cluster_assign_trns,cluster_assign_res)
 
@@ -253,7 +253,7 @@ write.csv(dunn_test,file.path("1. Data","Outputs","Dunn_Test.csv"),
 assigned_dat %>%
   group_by(cluster) %>%
   summarise(count = n(),
-            mean = across(where(~is.numeric(.x)), ~round(mean(.x, na.rm = TRUE),2))) %>%
+            across(where(~is.numeric(.x)), ~round(mean(.x, na.rm = TRUE),2))) %>%
   t()
 
 ### Feature Importance ====================================================
